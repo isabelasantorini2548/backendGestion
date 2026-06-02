@@ -1,6 +1,8 @@
 const { DataTypes } = require('sequelize');
-module.exports = (sequelize,DataTypes) =>{
-    const Eventocomite = sequelize.define('evento_comite',{
+
+module.exports = (sequelize,DataTypes) => {
+
+    const EventoComite = sequelize.define('EventoComite',{
    idcomite: {
       type: DataTypes.INTEGER,
       primaryKey: true,
@@ -44,10 +46,10 @@ module.exports = (sequelize,DataTypes) =>{
     ]
   });
 
-  EventoComite.associate = (models) => {
+  EventoComite.associate = function(models) {
     EventoComite.belongsTo(models.Evento, { foreignKey: 'idevento', as: 'evento' });
     EventoComite.belongsTo(models.User, { foreignKey: 'idusuario', as: 'usuario' });
-    EventoComite.hasMany(models.ComiteMensaje, { foreignKey: 'idcomite', as: 'mensajes' });
+    EventoComite.hasMany(models.ChatMensaje, { foreignKey: 'idcomite', as: 'mensajes' });
     EventoComite.belongsToMany(models.Notificacion, { foreignKey: 'idnotificacion', through: 'ComiteNotificaciones', as: 'notificacion' }); 
   };
 

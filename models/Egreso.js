@@ -1,0 +1,42 @@
+module.exports = (sequelize, DataTypes) => {
+  const Egreso = sequelize.define('Egreso', {
+    idegreso: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true,
+    },
+    idpresupuesto: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: { model: 'presupuesto', key: 'idpresupuesto' },
+    },
+    descripcion: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    cantidad: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0,
+    },
+    precio_unitario: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+    },
+    total: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+    },
+  }, {
+    tableName: 'egreso',
+    timestamps: false,
+  });
+
+  Egreso.associate = function(models) {
+    Egreso.belongsTo(models.Presupuesto, { foreignKey: 'idpresupuesto', as: 'presupuesto' });
+  };
+
+  return Egreso;
+};

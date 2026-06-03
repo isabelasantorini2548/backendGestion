@@ -23,15 +23,15 @@ const frontendExists = FRONTEND_PATH ? fs.existsSync(FRONTEND_PATH) : false;
 console.log('🔍 [DEBUG] FRONTEND_PATH:', FRONTEND_PATH, '| Existe:', frontendExists);
 
   const allowedOrigins = [
-  'https://backendgestion-production.up.railway.app/',
-  'https://frontendgestion-production.up.railway.app/',
+  'https://backendgestion-production.up.railway.app',
+  'https://frontendgestion-production.up.railway.app',
   'http://localhost:3000',
   'http://localhost:8081',
   'http://localhost:19006'
 ];
 
 app.use(cors({
-  origin: 'https://frontendgestion-production.up.railway.app/',
+  origin: 'https://frontendgestion-production.up.railway.app',
   //true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

@@ -517,66 +517,6 @@ const getComiteUser = asyncHandler(async (req, res) => {
     res.status(500).json({ message: 'Error interno del servidor', error: error.message });
   }
 });
-const getComiteUser = asyncHandler(async (req, res) => {
-  const models = getModels();
-  const { sequelize } = models;
-
-  try {
-    // 🔍 Primero, ver todos los académicos sin filtrar por habilitado
-    const [debugResults] = await sequelize.query(`
-      SELECT 
-        u.idusuario,
-        u.nombre,
-        u.apellidopat,
-        u.role,
-        u.habilitado
-      FROM usuario u
-      WHERE u.role = 'academico'
-      LIMIT 5
-    `);
-    
-    console.log('🔍 DEBUG - Académicos encontrados:', debugResults.length);
-    console.log('🔍 DEBUG - Valores de habilitado:', debugResults.map(r => ({
-      nombre: r.nombre,
-      habilitado: r.habilitado,
-      tipo: r.habilitado_type
-    })));
-
-    // ✅ Ahora la consulta real con el filtro correcto
-    const [results] = await sequelize.query(`
-      SELECT 
-        u.idusuario,
-        u.nombre,
-        u.apellidopat,
-        u.apellidomat,
-        u.email,
-        u.role,
-        u.habilitado,
-        f.nombre_facultad AS facultad
-      FROM usuario u
-      LEFT JOIN academico a ON u.idusuario = a.idusuario
-      LEFT JOIN facultad f ON a.facultad_id = f.facultad_id
-      WHERE u.role = 'academico' 
-        AND u.habilitado = true
-      ORDER BY u.nombre, u.apellidopat
-    `);
-
-    console.log('✅ Usuarios encontrados:', results.length);
-
-    const usuariosFormateados = results.map(row => ({
-      id: row.idusuario,
-      nombreCompleto: `${row.nombre || ''} ${row.apellidopat || ''} ${row.apellidomat || ''}`.trim(),
-      email: row.email,
-      role: row.role,
-      facultad: row.facultad || null
-    }));
-
-    res.status(200).json(usuariosFormateados);
-  } catch (error) {
-    console.error('❌ Error al obtener usuarios para comité:', error);
-    res.status(500).json({ message: 'Error interno del servidor', error: error.message });
-  }
-});
  const getId = asyncHandler(async(req, res)=>{
   try {
     const { id } = req.params;

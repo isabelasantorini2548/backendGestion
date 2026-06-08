@@ -479,6 +479,27 @@ const getComiteUser = asyncHandler(async (req, res) => {
   const { sequelize } = models;
 
   try {
+    // 🔍 Primero, ver todos los académicos sin filtrar por habilitado
+    const [debugResults] = await sequelize.query(`
+      SELECT 
+        u.idusuario,
+        u.nombre,
+        u.apellidopat,
+        u.role,
+        u.habilitado
+      FROM usuario u
+      WHERE u.role = 'academico'
+      LIMIT 5
+    `);
+    
+    console.log('🔍 DEBUG - Académicos encontrados:', debugResults.length);
+    console.log('🔍 DEBUG - Valores de habilitado:', debugResults.map(r => ({
+      nombre: r.nombre,
+      habilitado: r.habilitado,
+      tipo: r.habilitado_type
+    })));
+
+    // ✅ Ahora la consulta real con el filtro correcto
     const [results] = await sequelize.query(`
       SELECT 
         u.idusuario,
@@ -487,28 +508,29 @@ const getComiteUser = asyncHandler(async (req, res) => {
         u.apellidomat,
         u.email,
         u.role,
-		u.habilitado,
+        u.habilitado,
         f.nombre_facultad AS facultad
       FROM usuario u
       LEFT JOIN academico a ON u.idusuario = a.idusuario
       LEFT JOIN facultad f ON a.facultad_id = f.facultad_id
-      WHERE u.role = 'academico' AND u.habilitado::text = '1'
+      WHERE u.role = 'academico' 
       ORDER BY u.nombre, u.apellidopat
     `);
 
-    // ✅ Formatear directamente desde 'results'
+    console.log('✅ Usuarios encontrados:', results.length);
+
     const usuariosFormateados = results.map(row => ({
       id: row.idusuario,
       nombreCompleto: `${row.nombre || ''} ${row.apellidopat || ''} ${row.apellidomat || ''}`.trim(),
       email: row.email,
       role: row.role,
-      facultad: row.facultad || null  // <-- viene directo de la columna 'f.nombre_facultad AS facultad'
+      facultad: row.facultad || null
     }));
 
     res.status(200).json(usuariosFormateados);
   } catch (error) {
-    console.error('Error al obtener usuarios para comité:', error);
-    res.status(500).json({ message: 'Error interno del servidor' });
+    console.error('❌ Error al obtener usuarios para comité:', error);
+    res.status(500).json({ message: 'Error interno del servidor', error: error.message });
   }
 });
  const getId = asyncHandler(async(req, res)=>{

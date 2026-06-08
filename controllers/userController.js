@@ -444,13 +444,13 @@ const getComite = asyncHandler(async (req, res) => {
         u.email,
         u.role,
         f.nombre_facultad AS facultad,
-        c.nombre_carrera AS carrera
+        c.nombrecarrera AS carrera
       FROM usuario u
       LEFT JOIN academico a ON u.idusuario = a.idusuario
       LEFT JOIN facultad f ON a.facultad_id = f.facultad_id
       LEFT JOIN carrera c ON a.idcarrera = c.idcarrera
       WHERE u.role = 'academico' 
-        AND u.habilitado = true
+        AND u.habilitado::boolean = true
       ORDER BY u.nombre, u.apellidopat
     `);
 
@@ -490,13 +490,13 @@ const getComiteUser = asyncHandler(async (req, res) => {
         u.email,
         u.role,
         f.nombre_facultad AS facultad,
-        c.nombre_carrera AS carrera
+        c.nombrecarrera AS carrera
       FROM usuario u
       LEFT JOIN academico a ON u.idusuario = a.idusuario
       LEFT JOIN facultad f ON a.facultad_id = f.facultad_id
       LEFT JOIN carrera c ON a.idcarrera = c.idcarrera
       WHERE u.role = 'academico' 
-        AND u.habilitado = true
+        AND u.habilitado::boolean = true
       ORDER BY u.nombre, u.apellidopat
     `);
 

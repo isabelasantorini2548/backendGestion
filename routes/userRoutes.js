@@ -24,7 +24,7 @@ router.post('/link-telegram', linkTelegramAccount); // No protection needed if l
 router.get('/carreras', getCarrera); 
 
 router.get('/comite',protect,authorize(['admin', 'academico']), getComite);
-router.get('users/comite/', getComiteUser)
+router.get('/users/comite', protect, authorize(['admin', 'academico']), getComiteUser);
 //router.get('/notificaciones',protect,authorize(['admin', 'academico']), getAllUsers);
 router.get('/users', protect, authorize(['admin']), getAllUsers);
 router.get('/',getAllUsers);

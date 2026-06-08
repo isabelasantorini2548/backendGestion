@@ -443,15 +443,16 @@ const getComite = asyncHandler(async (req, res) => {
         u.apellidomat,
         u.email,
         u.role,
-        f.nombre_facultad AS facultad
+        f.nombre_facultad AS facultad,
+        c.nombrecarrera AS carrera
       FROM usuario u
       LEFT JOIN academico a ON u.idusuario = a.idusuario
       LEFT JOIN facultad f ON a.facultad_id = f.facultad_id
+      LEFT JOIN carrera c ON a.idcarrera = c.idcarrera
       WHERE u.role = 'academico' 
-        AND u.habilitado = 'true'
+        AND u.habilitado = true
       ORDER BY u.nombre, u.apellidopat
     `);
-
 
     console.log('✅ Usuarios encontrados:', results.length);
 
@@ -470,8 +471,50 @@ const getComite = asyncHandler(async (req, res) => {
     console.error('❌ Error al obtener comité:', error.message);
     res.status(500).json({ 
       message: 'Error interno del servidor',
-      detail: error.message  // ← Verás el error exacto en el frontend
+      detail: error.message
     });
+  }
+});
+
+const getComiteUser = asyncHandler(async (req, res) => {
+  const models = getModels();
+  const { sequelize } = models;
+
+  try {
+    const [results] = await sequelize.query(`
+      SELECT 
+        u.idusuario,
+        u.nombre,
+        u.apellidopat,
+        u.apellidomat,
+        u.email,
+        u.role,
+        f.nombre_facultad AS facultad,
+        c.nombrecarrera AS carrera
+      FROM usuario u
+      LEFT JOIN academico a ON u.idusuario = a.idusuario
+      LEFT JOIN facultad f ON a.facultad_id = f.facultad_id
+      LEFT JOIN carrera c ON a.idcarrera = c.idcarrera
+      WHERE u.role = 'academico' 
+        AND u.habilitado = true
+      ORDER BY u.nombre, u.apellidopat
+    `);
+
+    console.log('✅ Usuarios encontrados:', results.length);
+
+    const usuariosFormateados = results.map(row => ({
+      id: row.idusuario,
+      nombreCompleto: `${row.nombre || ''} ${row.apellidopat || ''} ${row.apellidomat || ''}`.trim(),
+      email: row.email,
+      role: row.role,
+      facultad: row.facultad || null,
+      carrera: row.carrera || null
+    }));
+
+    res.status(200).json(usuariosFormateados);
+  } catch (error) {
+    console.error('❌ Error al obtener usuarios para comité:', error);
+    res.status(500).json({ message: 'Error interno del servidor', error: error.message });
   }
 });
 const getComiteUser = asyncHandler(async (req, res) => {

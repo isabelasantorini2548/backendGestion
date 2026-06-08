@@ -444,7 +444,7 @@ const getComite = asyncHandler(async (req, res) => {
         u.email,
         u.role,
         f.nombre_facultad AS facultad,
-        c.nombrecarrera AS carrera
+        c.nombre_carrera AS carrera
       FROM usuario u
       LEFT JOIN academico a ON u.idusuario = a.idusuario
       LEFT JOIN facultad f ON a.facultad_id = f.facultad_id

@@ -80,8 +80,6 @@ const createEvento = async (req, res) => {
       console.warn('⚠️ No se pudo asignar fase:', faseError.message);
     }
 
-    // 3. TIPOS DE EVENTO
-    // evento_tipos: (idevento, idtipoevento, texto_personalizado)
     if (Array.isArray(data.tipos_de_evento) && data.tipos_de_evento.length > 0) {
       for (const tipo of data.tipos_de_evento) {
         await sequelize.query(
@@ -93,7 +91,7 @@ const createEvento = async (req, res) => {
     }
 
     if (Array.isArray(data.objetivos) && data.objetivos.length > 0) {
-      let primerIdObjetivo = null; // Variable segura para argumentación global
+      let primerIdObjetivo = null; 
        const objetivosCreados = [];
 
       for (const objetivo of data.objetivos) {
@@ -106,7 +104,6 @@ const createEvento = async (req, res) => {
           { replacements: [idtipoobjetivo, texto], transaction: t }
         );
 
-        // ✅ FIX: Validar que obtuvimos el ID antes de continuar
         const nuevoIdObjetivo = result[0]?.idobjetivo;
         if (!nuevoIdObjetivo) {
           console.warn('⚠️ No se pudo obtener el ID del objetivo creado');
@@ -115,7 +112,6 @@ const createEvento = async (req, res) => {
         objetivosCreados.push(nuevoIdObjetivo);
         if (!primerIdObjetivo) primerIdObjetivo = nuevoIdObjetivo;
 
-        // 4.2 Vincular en 'evento_objetivos'
         await sequelize.query(
           'INSERT INTO evento_objetivos (idevento, idobjetivo, texto_personalizado) VALUES (?, ?, ?)',
           { replacements: [nuevoEventoId, nuevoIdObjetivo, texto], transaction: t }
@@ -481,8 +477,8 @@ const getEventoById = asyncHandler(async (req, res) => {
     const [clasificacionData] = await sequelize.query(
       `SELECT 
       e."idevento",
-      c."nombre_clasificacion",
-      s."nombre_subcategoria",
+      c."nombreClasificacion",
+      s."nombresubcategoria",
       c."idclasificacion",
       s."idsubcategoria"
     FROM "evento" e

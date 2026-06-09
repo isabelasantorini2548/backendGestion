@@ -1791,16 +1791,3 @@ module.exports ={
     getFacultadById,
     diagnosticarModelos
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

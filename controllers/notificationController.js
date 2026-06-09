@@ -3,7 +3,6 @@ const { getModels } = require('../models/index.js');
 
 const sendNotification = async ({ idusuario, titulo, mensaje, tipo = 'nuevo_evento', estado = 'no_leido', id_relacionado = null }) => {
   try {
-    // ✅ Si llega un array, enviar una notificación por cada usuario
     if (Array.isArray(idusuario)) {
       for (const id of idusuario) {
         await sendNotification({ idusuario: id, titulo, mensaje, tipo, estado });
@@ -31,7 +30,6 @@ const sendNotification = async ({ idusuario, titulo, mensaje, tipo = 'nuevo_even
           estado,
           created_at: new Date(),
           updated_at: new Date(),
-          id
         },
         type: sequelize.QueryTypes.INSERT
       }

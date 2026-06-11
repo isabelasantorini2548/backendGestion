@@ -1,5 +1,7 @@
 // sockets/chatSocket.js
 module.exports = (io) => {
+  // Mapa para rastrear usuarios conectados por evento
+  const eventUsers = new Map(); // { eventoId: Map<userId, { userId, userName, role, socketId }> }
 
   io.on('connection', (socket) => {
     console.log('🔌 Usuario conectado:', socket.id);
@@ -36,6 +38,21 @@ module.exports = (io) => {
         // Unirse a la sala
         socket.join(room);
         socket.data = { userId, role, eventoId, userName };
+
+        // ✅ AGREGAR: Rastrear usuario conectado
+        if (!eventUsers.has(eventoId)) {
+          eventUsers.set(eventoId, new Map());
+        }
+        eventUsers.get(eventoId).set(String(userId), {
+          userId: String(userId),
+          userName,
+          role,
+          socketId: socket.id
+        });
+
+        // ✅ AGREGAR: Emitir lista actualizada a todos en la sala
+        const userList = Array.from(eventUsers.get(eventoId).values());
+        io.to(room).emit('user_list', userList);
 
         // Enviar historial
         const historial = await ChatMensaje.findAll({
@@ -119,6 +136,34 @@ module.exports = (io) => {
 
     socket.on('disconnect', () => {
       console.log('❌ Usuario desconectado:', socket.id);
+      
+      // ✅ AGREGAR: Remover usuario del mapa y notificar
+      const { userId, eventoId, userName, role } = socket.data || {};
+      
+      if (eventoId && userId && eventUsers.has(eventoId)) {
+        const userMap = eventUsers.get(eventoId);
+        const user = userMap.get(String(userId));
+        userMap.delete(String(userId));
+        
+        const room = `evento_${eventoId}`;
+        
+        if (userMap.size === 0) {
+          eventUsers.delete(eventoId);
+        } else {
+          // Emitir lista actualizada
+          const userList = Array.from(userMap.values());
+          io.to(room).emit('user_list', userList);
+        }
+        
+        // Notificar que alguien salió
+        socket.to(room).emit('user_left', { 
+          userId,
+          userName: user?.userName || userName, 
+          role: user?.role || role 
+        });
+        
+        console.log(`👋 ${userName || 'Usuario'} salió de ${room}`);
+      }
     });
   });
 };

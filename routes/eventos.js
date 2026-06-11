@@ -40,6 +40,7 @@ router.get('/rechazados',protect, getEventosRechazados);
 router.put('/:id/approve', aprobarEvento);
 router.put('/:id/reject',deleteEvento);
 router.put('/:id', updateEvento);
+router.put('/:id/cancel',rechazarEvento);
 //router.delete('/:id', deleteEvento);
 router.post('/',protect, createEvento);
 router.get('/', getAllEventos);

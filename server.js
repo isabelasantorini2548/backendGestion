@@ -39,15 +39,15 @@ app.use(cors({
 }));
 const io = new Server(server, {
   cors: {
-    origin: (origin, callback) => {
-      callback(null, true);
-    },
-    credentials: true,
+    origin: '*',
     methods: ['GET', 'POST']
   },
-  // Necesario para web con Expo
   allowEIO3: true,
-  transports: ['polling', 'websocket']
+  transports: ['polling', 'websocket'],
+  // 🔧 IMPORTANTE para Railway/Heroku
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  connectTimeout: 45000,
 });
 
 app.use(express.json({ limit: '10mb' }));

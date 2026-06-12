@@ -79,56 +79,76 @@ module.exports = (io) => {
     });
 
     socket.on('send_message', async ({ eventoId, userId, role, userName, message }) => {
-      const room = `evento_${eventoId}`;
+  console.log('📨 [CHAT] Mensaje recibido:', { eventoId, userId, userName, message });
+  
+  const room = `evento_${eventoId}`;
 
-      try {
-        const { getModels } = require('../models');
-        const { ChatMensaje, Comite, Evento } = getModels();
+  try {
+    const { getModels } = require('../models');
+    const { ChatMensaje, Comite, Evento } = getModels();
 
-        // Validar acceso: comité O creador
-        if (eventoId !== 'general') {
-          const [esMiembro, evento] = await Promise.all([
-            Comite.findOne({
-              where: {
-                idevento:  parseInt(eventoId),
-                idusuario: parseInt(userId)
-              }
-            }),
-            Evento.findOne({
-              where: { idevento: parseInt(eventoId) }
-            })
-          ]);
+    console.log('✅ [CHAT] Modelos cargados correctamente');
 
-          const esCreador = evento && parseInt(evento.idacademico) === parseInt(userId);
-
-          if (!esMiembro && !esCreador) {
-            socket.emit('error', { message: 'No tienes permiso para enviar mensajes' });
-            return;
+    // Validar acceso: comité O creador
+    if (eventoId !== 'general') {
+      const [esMiembro, evento] = await Promise.all([
+        Comite.findOne({
+          where: {
+            idevento:  parseInt(eventoId),
+            idusuario: parseInt(userId)
           }
-        }
+        }),
+        Evento.findOne({
+          where: { idevento: parseInt(eventoId) }
+        })
+      ]);
 
-        // Guardar en DB
-        await ChatMensaje.create({
-          evento_id: String(eventoId),
-          user_id:   String(userId),
-          user_name: userName,
-          role,
-          message
-        });
+      console.log('🔍 [CHAT] Validación:', { 
+        esMiembro: !!esMiembro, 
+        esCreador: evento && parseInt(evento.idacademico) === parseInt(userId),
+        eventoIdacademico: evento?.idacademico,
+        userId
+      });
 
-        // Broadcast a todos en la sala
-        io.to(room).emit('receive_message', {
-          userId,
-          userName,
-          role,
-          message,
-          timestamp: new Date().toISOString()
-        });
+      const esCreador = evento && parseInt(evento.idacademico) === parseInt(userId);
 
-      } catch (e) {
-        console.warn('⚠️ Error en send_message:', e.message);
+      if (!esMiembro && !esCreador) {
+        console.warn('⚠️ [CHAT] Usuario sin permiso:', { userId, eventoId });
+        socket.emit('error', { message: 'No tienes permiso para enviar mensajes' });
+        return;
       }
+    }
+
+    // Guardar en DB
+    console.log('💾 [CHAT] Guardando mensaje en DB...');
+    const nuevoMensaje = await ChatMensaje.create({
+      evento_id: String(eventoId),
+      user_id:   String(userId),
+      user_name: userName,
+      role,
+      message
     });
+    console.log('✅ [CHAT] Mensaje guardado:', nuevoMensaje.id);
+
+    // Broadcast a todos en la sala
+    const mensajeParaEmitir = {
+      userId,
+      userName,
+      role,
+      message,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('📤 [CHAT] Emitiendo mensaje a sala:', room);
+    io.to(room).emit('receive_message', mensajeParaEmitir);
+    console.log('✅ [CHAT] Mensaje emitido exitosamente');
+
+  } catch (e) {
+    console.error('❌ [CHAT] Error en send_message:', e);
+    console.error('❌ [CHAT] Stack:', e.stack);
+    socket.emit('error', { message: 'Error al enviar mensaje: ' + e.message });
+  }
+});
 
     socket.on('leave_event', ({ eventoId }) => {
       socket.leave(`evento_${eventoId}`);

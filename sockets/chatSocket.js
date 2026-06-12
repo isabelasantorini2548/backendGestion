@@ -6,78 +6,87 @@ module.exports = (io) => {
     console.log('🔌 Usuario conectado:', socket.id);
 
     socket.on('join_private', async ({ roomId, userId, userName }) => {
-      console.log('🔐 [PRIVATE] Usuario se une a sala privada:', { roomId, userId });
+      console.log('🔐 [PRIVADO] Usuario se une:', { roomId, userId });
       socket.join(roomId);
-      socket.data = { ...socket.data, roomId, isPrivate: true };
+      socket.data = { ...socket.data, roomId, isPrivate: true, userId, userName };
 
       try {
         const { getModels } = require('../models');
         const { ChatMensaje } = getModels();
 
-        // Enviar historial de chat privado
+        const ids = roomId.replace('private_', '').split('_');
+        
         const historial = await ChatMensaje.findAll({
-          where: { evento_id: roomId }, // roomId = 'private_24_57'
+          where: {
+            idevento: 0,
+          },
           order: [['createdAt', 'ASC']],
           limit: 50
         });
 
-        socket.emit('history', historial.map(m => ({
-          userId:    m.user_id,
-          userName:  m.user_name,
-          role:      m.role,
-          message:   m.message,
+        const mensajesFiltrados = historial.filter(m => 
+          ids.includes(String(m.idusuario))
+        );
+
+        socket.emit('history', mensajesFiltrados.map(m => ({
+          userId: m.idusuario,
+          userName: m.user_name,
+          role: m.role,
+          message: m.message,
           timestamp: m.createdAt
         })));
+
+        console.log('✅ [PRIVADO] Historial enviado:', mensajesFiltrados.length, 'mensajes');
       } catch (e) {
-        console.warn('⚠️ [PRIVATE] Error cargando historial:', e.message);
+        console.warn('⚠️ [PRIVADO] Error cargando historial:', e.message);
         socket.emit('history', []);
       }
     });
 
     socket.on('send_private', async ({ roomId, userId, userName, role, message }) => {
-      console.log('💬 [PRIVATE] Mensaje privado:', { roomId, userId, message });
+      console.log('💬 [PRIVADO] Mensaje:', { roomId, userId, message: message.substring(0, 50) });
 
       try {
         const { getModels } = require('../models');
         const { ChatMensaje } = getModels();
 
         await ChatMensaje.create({
-          evento_id: roomId,
-          user_id: String(userId),
+          idevento: 0,
+          idusuario: parseInt(userId),
           user_name: userName,
           role,
           message
         });
 
         io.to(roomId).emit('private_message', {
-          userId,
+          userId: parseInt(userId),
           userName,
           role,
           message,
           timestamp: new Date().toISOString()
         });
 
-        console.log('✅ [PRIVATE] Mensaje emitido a sala:', roomId);
+        console.log('✅ [PRIVADO] Mensaje enviado a sala:', roomId);
       } catch (e) {
-        console.error('❌ [PRIVATE] Error:', e.message);
-        socket.emit('error', { message: 'Error al enviar mensaje privado' });
+        console.error('❌ [PRIVADO] Error completo:', e);
+        console.error('❌ [PRIVADO] Mensaje:', e.message);
+        socket.emit('error', { message: 'Error al enviar mensaje privado: ' + e.message });
       }
     });
 
     socket.on('leave_private', ({ roomId }) => {
-      console.log('🚪 [PRIVATE] Usuario sale de sala:', roomId);
+      console.log('🚪 [PRIVADO] Usuario sale:', roomId);
       socket.leave(roomId);
     });
 
     socket.on('join_event', async ({ eventoId, userId, role, userName }) => {
       const room = `evento_${eventoId}`;
-      console.log('👥 [EVENT] Usuario se une:', { eventoId, userId, userName, room });
+      console.log('👥 [EVENTO] Usuario se une:', { eventoId, userId, userName, room });
 
       try {
         const { getModels } = require('../models');
         const { ChatMensaje, Comite, Evento } = getModels();
 
-        // Validar acceso
         if (eventoId !== 'general') {
           const [esMiembroComite, evento] = await Promise.all([
             Comite.findOne({
@@ -94,17 +103,15 @@ module.exports = (io) => {
           const esCreador = evento && parseInt(evento.idacademico) === parseInt(userId);
 
           if (!esMiembroComite && !esCreador) {
-            console.warn('⚠️ [EVENT] Usuario sin acceso:', { userId, eventoId });
+            console.warn('⚠️ [EVENTO] Usuario sin acceso:', { userId, eventoId });
             socket.emit('error', { message: 'No tienes acceso a este chat' });
             return;
           }
         }
 
-        // Unirse a la sala
         socket.join(room);
         socket.data = { userId, role, eventoId, userName };
 
-        // Rastrear usuario
         if (!eventUsers.has(eventoId)) {
           eventUsers.set(eventoId, new Map());
         }
@@ -115,19 +122,17 @@ module.exports = (io) => {
           socketId: socket.id
         });
 
-        // Emitir lista actualizada
         const userList = Array.from(eventUsers.get(eventoId).values());
         io.to(room).emit('user_list', userList);
 
-        // Enviar historial
         const historial = await ChatMensaje.findAll({
-          where: { evento_id: String(eventoId) },
+          where: { idevento: parseInt(eventoId) },
           order: [['createdAt', 'ASC']],
           limit: 50
         });
 
         socket.emit('history', historial.map(m => ({
-          userId: m.user_id,
+          userId: m.idusuario,
           userName: m.user_name,
           role: m.role,
           message: m.message,
@@ -135,23 +140,23 @@ module.exports = (io) => {
         })));
 
         socket.to(room).emit('user_joined', { userId, userName, role });
-        console.log(`✅ [EVENT] ${userName} (${role}) → sala ${room}`);
+        console.log(`✅ [EVENTO] ${userName} (${role}) → sala ${room}`);
 
       } catch (e) {
-        console.warn('⚠️ [EVENT] Error en join_event:', e.message);
+        console.warn('⚠️ [EVENTO] Error en join_event:', e.message);
+        console.error('⚠️ [EVENTO] Stack:', e.stack);
         socket.emit('history', []);
       }
     });
 
     socket.on('send_message', async ({ eventoId, userId, role, userName, message }) => {
       const room = `evento_${eventoId}`;
-      console.log('💬 [EVENT] Mensaje grupal:', { eventoId, userId, userName, message, room });
+      console.log('💬 [EVENTO] Mensaje grupal:', { eventoId, userId, userName, message: message.substring(0, 50), room });
 
       try {
         const { getModels } = require('../models');
         const { ChatMensaje, Comite, Evento } = getModels();
 
-        // Validar acceso
         if (eventoId !== 'general') {
           const [esMiembro, evento] = await Promise.all([
             Comite.findOne({
@@ -168,38 +173,38 @@ module.exports = (io) => {
           const esCreador = evento && parseInt(evento.idacademico) === parseInt(userId);
 
           if (!esMiembro && !esCreador) {
-            console.warn('⚠️ [EVENT] Sin permiso para enviar:', { userId, eventoId });
+            console.warn('⚠️ [EVENTO] Sin permiso:', { userId, eventoId });
             socket.emit('error', { message: 'No tienes permiso para enviar mensajes' });
             return;
           }
         }
 
-        // Guardar en DB
         await ChatMensaje.create({
-          evento_id: String(eventoId),
-          user_id: String(userId),
+          idevento: parseInt(eventoId),
+          idusuario: parseInt(userId),
           user_name: userName,
           role,
           message
         });
 
         io.to(room).emit('receive_message', {
-          userId,
+          userId: parseInt(userId),
           userName,
           role,
           message,
           timestamp: new Date().toISOString()
         });
 
-        console.log('✅ [EVENT] Mensaje emitido a sala:', room);
+        console.log('✅ [EVENTO] Mensaje emitido a sala:', room);
       } catch (e) {
-        console.error('❌ [EVENT] Error en send_message:', e.message);
+        console.error('❌ [EVENTO] Error en send_message:', e.message);
+        console.error('❌ [EVENTO] Stack:', e.stack);
         socket.emit('error', { message: 'Error al enviar mensaje: ' + e.message });
       }
     });
 
     socket.on('leave_event', ({ eventoId }) => {
-      console.log('🚪 [EVENT] Usuario sale de sala:', eventoId);
+      console.log('🚪 [EVENTO] Usuario sale:', eventoId);
       socket.leave(`evento_${eventoId}`);
     });
 

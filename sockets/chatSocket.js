@@ -44,35 +44,47 @@ module.exports = (io) => {
     });
 
     socket.on('send_private', async ({ roomId, userId, userName, role, message }) => {
-      console.log('💬 [PRIVADO] Mensaje:', { roomId, userId, message: message.substring(0, 50) });
+  console.log('💬 [PRIVADO] Mensaje:', { roomId, userId, message: message.substring(0, 50) });
 
-      try {
-        const { getModels } = require('../models');
-        const { ChatMensaje } = getModels();
+  try {
+    const { getModels } = require('../models');
+    const models = getModels();
+    
+    console.log('[PRIVADO] Modelos cargados:', Object.keys(models));
+    
+    const ChatMensaje = models.ChatMensaje;
+    
+    if (!ChatMensaje) {
+      console.error('❌ [PRIVADO] ChatMensaje NO está definido en los modelos!');
+      socket.emit('error', { message: 'Modelo ChatMensaje no disponible' });
+      return;
+    }
+    
+    console.log('[PRIVADO] ChatMensaje disponible:', typeof ChatMensaje.create);
 
-        await ChatMensaje.create({
-          idevento: 0,
-          idusuario: parseInt(userId),
-          user_name: userName,
-          role,
-          message
-        });
-
-        io.to(roomId).emit('private_message', {
-          userId: parseInt(userId),
-          userName,
-          role,
-          message,
-          timestamp: new Date().toISOString()
-        });
-
-        console.log('✅ [PRIVADO] Mensaje enviado a sala:', roomId);
-      } catch (e) {
-        console.error('❌ [PRIVADO] Error completo:', e);
-        console.error('❌ [PRIVADO] Mensaje:', e.message);
-        socket.emit('error', { message: 'Error al enviar mensaje privado: ' + e.message });
-      }
+    await ChatMensaje.create({
+      idevento: 0,
+      idusuario: parseInt(userId),
+      user_name: userName,
+      role,
+      message
     });
+
+    io.to(roomId).emit('private_message', {
+      userId: parseInt(userId),
+      userName,
+      role,
+      message,
+      timestamp: new Date().toISOString()
+    });
+
+    console.log('✅ [PRIVADO] Mensaje enviado a sala:', roomId);
+  } catch (e) {
+    console.error('❌ [PRIVADO] Error completo:', e);
+    console.error('❌ [PRIVADO] Mensaje:', e.message);
+    socket.emit('error', { message: 'Error al enviar mensaje privado: ' + e.message });
+  }
+});
 
     socket.on('leave_private', ({ roomId }) => {
       console.log('🚪 [PRIVADO] Usuario sale:', roomId);

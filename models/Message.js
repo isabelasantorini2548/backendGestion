@@ -34,10 +34,10 @@ module.exports = (sequelize, DataTypes) => {
       otherKey: 'idevento',
       as: 'eventos'
     });
-    Message.belongsTo(models.Comite, { 
+   /* Message.belongsTo(models.Comite, { 
       foreignKey: 'idcomite', 
       as: 'comite' 
-    });
+    });*/
   };
   return Message;
 };

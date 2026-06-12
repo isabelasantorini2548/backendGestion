@@ -1,6 +1,7 @@
-// models/ChatMensaje.js
+const { DataTypes } = require('sequelize');
+
 module.exports = (sequelize, DataTypes) => {
-  const ChatMensaje = sequelize.define('ChatMensaje', {
+  const ChatMensaje = sequelize.define('chatMensaje', {
     id: {
       type: DataTypes.INTEGER,
       primaryKey: true,
@@ -22,20 +23,28 @@ module.exports = (sequelize, DataTypes) => {
         key: 'idusuario'
       }
     },
-    user_name: {
+    username: {
       type: DataTypes.STRING,
-      allowNull: true
+      allowNull: true,
+      references: {
+        model: 'usuario',
+        key: 'username'
+      }
     },
     role: {
       type: DataTypes.STRING(20),
-      allowNull: true
+      allowNull: true,
+      references: {
+        model: 'usuario',
+        key: 'role'
+      }
     },
     message: {
       type: DataTypes.TEXT,
       allowNull: false
     }
   }, {
-    tableName: 'ChatMensaje',
+    tableName: 'chatMensaje',
     timestamps: true,
     underscored: false
   });

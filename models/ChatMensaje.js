@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize, DataTypes) => {
-  const ChatMensaje = sequelize.define('chatMensaje', {
+  const ChatMensaje = sequelize.define('ChatMensaje', {
     id: {
       type: DataTypes.INTEGER,
       primaryKey: true,

@@ -44,9 +44,10 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     }
   }, {
-    tableName: 'chatMensaje',
+    tableName: '"chatMensaje"',  // 🔥 Comillas dobles DENTRO para preservar mayúsculas
     timestamps: true,
-    underscored: false
+    underscored: false,
+    freezeTableName: true
   });
   return ChatMensaje;
 };

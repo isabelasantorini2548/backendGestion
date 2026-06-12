@@ -50,12 +50,15 @@ module.exports = (io) => {
     const { getModels } = require('../models');
     const models = getModels();
     
-    console.log('[PRIVADO] Modelos cargados:', Object.keys(models));
+    console.log('[PRIVADO] 🔍 Modelos disponibles:', Object.keys(models));
+    console.log('[PRIVADO] 🔍 ChatMensaje existe:', !!models.ChatMensaje);
+    console.log('[PRIVADO] 🔍 ChatMensaje type:', typeof models.ChatMensaje);
     
     const ChatMensaje = models.ChatMensaje;
     
     if (!ChatMensaje) {
-      console.error('❌ [PRIVADO] ChatMensaje NO está definido en los modelos!');
+        console.error('❌ [PRIVADO] ChatMensaje NO está definido!');
+      console.error('❌ [PRIVADO] Modelos disponibles:', Object.keys(models).join(', '));
       socket.emit('error', { message: 'Modelo ChatMensaje no disponible' });
       return;
     }

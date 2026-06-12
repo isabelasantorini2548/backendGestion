@@ -36,8 +36,9 @@ module.exports = (sequelize, DataTypes) => {
     }
   }, {
     tableName: 'ChatMensaje',
+    freezeTableName: true,
     timestamps: true,
-    underscored: true
+    underscored: false
   });
   return ChatMensaje;
 };

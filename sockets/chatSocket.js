@@ -1,75 +1,52 @@
-// sockets/chatSocket.js
 module.exports = (io) => {
   const eventUsers = new Map();
 
   io.on('connection', (socket) => {
     console.log('🔌 Usuario conectado:', socket.id);
-
-    socket.on('join_private', async ({ roomId, userId, userName }) => {
-      console.log('🔐 [PRIVADO] Usuario se une:', { roomId, userId });
-      socket.join(roomId);
-      socket.data = { ...socket.data, roomId, isPrivate: true, userId, userName };
-
-      try {
-        const { getModels } = require('../models');
-        const { ChatMensaje } = getModels();
-
-        const ids = roomId.replace('private_', '').split('_');
-        
-        const historial = await ChatMensaje.findAll({
-          where: {
-            idevento: 0,
-          },
-          order: [['createdAt', 'ASC']],
-          limit: 50
-        });
-
-        const mensajesFiltrados = historial.filter(m => 
-          ids.includes(String(m.idusuario))
-        );
-
-        socket.emit('history', mensajesFiltrados.map(m => ({
-          userId: m.idusuario,
-          userName: m.user_name,
-          role: m.role,
-          message: m.message,
-          timestamp: m.createdAt
-        })));
-
-        console.log('✅ [PRIVADO] Historial enviado:', mensajesFiltrados.length, 'mensajes');
-      } catch (e) {
-        console.warn('⚠️ [PRIVADO] Error cargando historial:', e.message);
-        socket.emit('history', []);
-      }
-    });
-
-    socket.on('send_private', async ({ roomId, userId, userName, role, message }) => {
-  console.log('💬 [PRIVADO] Mensaje:', { roomId, userId, message: message.substring(0, 50) });
+socket.on('join_private', async ({ roomId, userId, userName }) => {
+  socket.join(roomId);
+  socket.data = { ...socket.data, roomId, isPrivate: true, userId, userName };
 
   try {
     const { getModels } = require('../models');
-    const models = getModels();
-    const ChatMensaje = models.ChatMensaje;
-     
-    if (!ChatMensaje) {
-      console.error('❌ ChatMensaje no disponible');
-      socket.emit('error', { message: 'Modelo no disponible' });
-      return;
-    }  
+    const { ChatMensaje } = getModels();
 
-    console.log('[PRIVADO] 🔍 Modelos disponibles:', Object.keys(models));
-    console.log('[PRIVADO] 🔍 ChatMensaje existe:', !!models.ChatMensaje);
-    console.log('[PRIVADO] 🔍 ChatMensaje type:', typeof models.ChatMensaje);
-    console.log('[PRIVADO] ChatMensaje disponible:', typeof ChatMensaje.create);
+    const ids = roomId.replace('private_', '').split('_').map(Number);
+    const [idA, idB] = ids;
 
-    const nuevoMensaje = await ChatMensaje.create({
+    const historial = await ChatMensaje.findAll({
+      where: {
+        idevento: 0,
+        room_id: roomId,         // emisor es uno de los dos
+      },
+      order: [['createdAt', 'ASC']],
+      limit: 100
+    });
+
+    socket.emit('history', historial.map(m => ({
+      userId: m.idusuario,
+      userName: m.user_name,
+      role: m.role,
+      message: m.message,
+      timestamp: m.createdAt
+    })));
+  } catch (e) {
+    socket.emit('history', []);
+  }
+});
+    socket.on('send_private', async ({ roomId, userId, userName, role, message }) => {
+  try {
+    const { getModels } = require('../models');
+    const { ChatMensaje } = getModels();
+
+    await ChatMensaje.create({
       idevento: 0,
       idusuario: parseInt(userId),
       user_name: userName,
       role,
-      message
+      message,
+      room_id: roomId,  // ✅ guardar la sala
     });
-    console.log('✅ Mensaje guardado ID:', nuevoMensaje.id);
 
     io.to(roomId).emit('private_message', {
       userId: parseInt(userId),
@@ -78,12 +55,8 @@ module.exports = (io) => {
       message,
       timestamp: new Date().toISOString()
     });
-
-    console.log('✅ [PRIVADO] Mensaje enviado a sala:', roomId);
   } catch (e) {
-    console.error('❌ [PRIVADO] Error completo:', e);
-    console.error('❌ [PRIVADO] Mensaje:', e.message);
-    socket.emit('error', { message: 'Error al enviar mensaje privado: ' + e.message });
+    socket.emit('error', { message: 'Error: ' + e.message });
   }
 });
 

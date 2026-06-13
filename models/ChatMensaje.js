@@ -47,7 +47,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW
     },
-    udpated_at: {
+    updated_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW
     }

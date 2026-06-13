@@ -44,7 +44,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     }
   }, {
-    tableName: 'chatMensaje',  
+    tableName: 'chatmensaje',  
     timestamps: true,
     underscored: true,
   });

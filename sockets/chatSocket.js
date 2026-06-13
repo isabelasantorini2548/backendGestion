@@ -49,33 +49,31 @@ module.exports = (io) => {
   try {
     const { getModels } = require('../models');
     const models = getModels();
-    
+    const ChatMensaje = models.ChatMensaje;
+     
+    if (!ChatMensaje) {
+      console.error('❌ ChatMensaje no disponible');
+      socket.emit('error', { message: 'Modelo no disponible' });
+      return;
+    }  
+
     console.log('[PRIVADO] 🔍 Modelos disponibles:', Object.keys(models));
     console.log('[PRIVADO] 🔍 ChatMensaje existe:', !!models.ChatMensaje);
     console.log('[PRIVADO] 🔍 ChatMensaje type:', typeof models.ChatMensaje);
-    
-    const ChatMensaje = models.ChatMensaje;
-    
-    if (!ChatMensaje) {
-        console.error('❌ [PRIVADO] ChatMensaje NO está definido!');
-      console.error('❌ [PRIVADO] Modelos disponibles:', Object.keys(models).join(', '));
-      socket.emit('error', { message: 'Modelo ChatMensaje no disponible' });
-      return;
-    }
-    
     console.log('[PRIVADO] ChatMensaje disponible:', typeof ChatMensaje.create);
 
-    await ChatMensaje.create({
+    const nuevoMensaje = await ChatMensaje.create({
       idevento: 0,
       idusuario: parseInt(userId),
       user_name: userName,
       role,
       message
     });
+    console.log('✅ Mensaje guardado ID:', nuevoMensaje.id);
 
     io.to(roomId).emit('private_message', {
       userId: parseInt(userId),
-      userName,
+      userName: userName || 'Usuario',
       role,
       message,
       timestamp: new Date().toISOString()
@@ -165,58 +163,36 @@ module.exports = (io) => {
     });
 
     socket.on('send_message', async ({ eventoId, userId, role, userName, message }) => {
-      const room = `evento_${eventoId}`;
-      console.log('💬 [EVENTO] Mensaje grupal:', { eventoId, userId, userName, message: message.substring(0, 50), room });
+  const room = `evento_${eventoId}`;
+  console.log('💬 [EVENTO] Mensaje:', { eventoId, userId, userName, message });
 
-      try {
-        const { getModels } = require('../models');
-        const { ChatMensaje, Comite, Evento } = getModels();
+  try {
+    const { getModels } = require('../models');
+    const { ChatMensaje } = getModels();
 
-        if (eventoId !== 'general') {
-          const [esMiembro, evento] = await Promise.all([
-            Comite.findOne({
-              where: {
-                idevento: parseInt(eventoId),
-                idusuario: parseInt(userId)
-              }
-            }),
-            Evento.findOne({
-              where: { idevento: parseInt(eventoId) }
-            })
-          ]);
-
-          const esCreador = evento && parseInt(evento.idacademico) === parseInt(userId);
-
-          if (!esMiembro && !esCreador) {
-            console.warn('⚠️ [EVENTO] Sin permiso:', { userId, eventoId });
-            socket.emit('error', { message: 'No tienes permiso para enviar mensajes' });
-            return;
-          }
-        }
-
-        await ChatMensaje.create({
-          idevento: parseInt(eventoId),
-          idusuario: parseInt(userId),
-          user_name: userName,
-          role,
-          message
-        });
-
-        io.to(room).emit('receive_message', {
-          userId: parseInt(userId),
-          userName,
-          role,
-          message,
-          timestamp: new Date().toISOString()
-        });
-
-        console.log('✅ [EVENTO] Mensaje emitido a sala:', room);
-      } catch (e) {
-        console.error('❌ [EVENTO] Error en send_message:', e.message);
-        console.error('❌ [EVENTO] Stack:', e.stack);
-        socket.emit('error', { message: 'Error al enviar mensaje: ' + e.message });
-      }
+    await ChatMensaje.create({
+      idevento: parseInt(eventoId),
+      idusuario: parseInt(userId),
+      user_name: userName || null,
+      role,
+      message
     });
+
+    // 🔥 EMITIR a todos en la sala
+    io.to(room).emit('receive_message', {
+      userId: parseInt(userId),
+      userName: userName || 'Usuario',
+      role,
+      message,
+      timestamp: new Date().toISOString()
+    });
+
+    console.log('✅ [EVENTO] Mensaje emitido a:', room);
+  } catch (e) {
+    console.error('❌ [EVENTO] Error:', e.message);
+    socket.emit('error', { message: e.message });
+  }
+});
 
     socket.on('leave_event', ({ eventoId }) => {
       console.log('🚪 [EVENTO] Usuario sale:', eventoId);

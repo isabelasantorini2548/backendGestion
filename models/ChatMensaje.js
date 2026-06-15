@@ -26,6 +26,7 @@ module.exports = (sequelize, DataTypes) => {
     username: {
       type: DataTypes.STRING,
       allowNull: true,
+      field: 'username',
       references: {
         model: 'usuario',
         key: 'username'
@@ -34,6 +35,7 @@ module.exports = (sequelize, DataTypes) => {
     role: {
       type: DataTypes.STRING(20),
       allowNull: true,
+      field: 'role',
       references: {
         model: 'usuario',
         key: 'role'
@@ -50,6 +52,11 @@ module.exports = (sequelize, DataTypes) => {
     updated_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW
+    },
+    room_id: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      field: 'room_id'
     }
   }, {
     tableName: 'chatmensaje',  

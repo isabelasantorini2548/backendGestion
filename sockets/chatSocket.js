@@ -25,10 +25,10 @@ socket.on('join_private', async ({ roomId, userId, userName }) => {
 
     socket.emit('history', historial.map(m => ({
       userId: m.idusuario,
-      userName: m.user_name,
+      userName: m.username,
       role: m.role,
       message: m.message,
-      timestamp: m.createdAt
+      timestamp: m.created_at
     })));
   } catch (e) {
     socket.emit('history', []);
@@ -42,7 +42,7 @@ socket.on('join_private', async ({ roomId, userId, userName }) => {
     await ChatMensaje.create({
       idevento: 0,
       idusuario: parseInt(userId),
-      user_name: userName,
+      username: userName || null,
       role,
       message,
       room_id: roomId,  // ✅ guardar la sala
@@ -119,10 +119,10 @@ socket.on('join_private', async ({ roomId, userId, userName }) => {
 
         socket.emit('history', historial.map(m => ({
           userId: m.idusuario,
-          userName: m.user_name,
+          userName: m.username,
           role: m.role,
           message: m.message,
-          timestamp: m.createdAt
+          timestamp: m.created_at
         })));
 
         socket.to(room).emit('user_joined', { userId, userName, role });
@@ -146,7 +146,7 @@ socket.on('join_private', async ({ roomId, userId, userName }) => {
     await ChatMensaje.create({
       idevento: parseInt(eventoId),
       idusuario: parseInt(userId),
-      user_name: userName || null,
+      username: userName || null,
       role,
       message
     });

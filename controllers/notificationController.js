@@ -1,7 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const { getModels } = require('../models/index.js'); 
 
-const sendNotification = async ({ idusuario, titulo, mensaje, tipo = 'nuevo_evento', estado = 'no_leido', id_relacionado = null }) => {
+const sendNotification = async ({ idusuario, titulo, mensaje, tipo = 'nuevo_evento', estado = 'pendiente', id_relacionado = null }) => {
   try {
     if (Array.isArray(idusuario)) {
       for (const id of idusuario) {
@@ -92,7 +92,7 @@ const markAsRead = asyncHandler(async (req, res) => {
   }
 
   const [updated] = await Notificacion.update(
-    { estado: 'leido', updated_at: new Date() }, // ✅ Solo 'estado', sin campo 'read' inexistente
+    { estado: 'leido', updated_at: new Date() },
     {
       where: {
         idnotificacion: notificationId,
@@ -118,10 +118,11 @@ const getUnreadCount = asyncHandler(async (req, res) => {
     return res.status(401).json({ message: 'Usuario no autenticado' });
   }
 
+  const { Op } = require('sequelize');
   const count = await Notificacion.count({
     where: {
       idusuario: userId,
-      estado: 'pendiente' 
+      estado: { [Op.ne]: 'leido' } 
     }
   });
 

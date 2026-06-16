@@ -3,7 +3,6 @@ const { Op } = require('sequelize');
 const asyncHandler = require('express-async-handler');
 const { sendNotification } = require('./notificationController.js');
 
-// --- CONSTANTES ---
 const OBJETIVO_TYPES = {
   modeloPedagogico: 1, posicionamiento: 2, internacionalizacion: 3,
   rsu: 4, fidelizacion: 5, otro: 6
@@ -11,7 +10,6 @@ const OBJETIVO_TYPES = {
 const OTRO_TIPO_ID = 6;
 const OTRO_SEGMENTO_ID = 5;
 
-// --- FUNCIONES AUXILIARES ---
 const safeJsonParse = (jsonString, defaultValue = {}) => {
   try {
     if (!jsonString) return defaultValue;
@@ -50,7 +48,6 @@ const createEvento = async (req, res) => {
       return res.status(400).json({ message: 'Campos requeridos: nombreevento, fechaevento' });
     }
 
-    // 1. CREAR EVENTO
     const nuevoEvento = await Evento.create({
       nombreevento: data.nombreevento,
       lugarevento: data.lugarevento || 'Por definir',
@@ -63,9 +60,8 @@ const createEvento = async (req, res) => {
     }, { transaction: t });
 
     const nuevoEventoId = nuevoEvento.idevento;
-    console.log('✅ Evento creado con ID:', nuevoEventoId);
+    console.log('Evento creado con ID:', nuevoEventoId);
 
-    // 2. FASE MAESTRA
     try {
       const faseMaestra = await Fase.findOne({
         where: { nrofase: 1 },
@@ -77,7 +73,7 @@ const createEvento = async (req, res) => {
         await nuevoEvento.save({ transaction: t });
       }
     } catch (faseError) {
-      console.warn('⚠️ No se pudo asignar fase:', faseError.message);
+      console.warn('No se pudo asignar fase:', faseError.message);
     }
 
     if (Array.isArray(data.tipos_de_evento) && data.tipos_de_evento.length > 0) {
@@ -87,18 +83,17 @@ const createEvento = async (req, res) => {
           { replacements: [nuevoEventoId, tipo.id, tipo.texto_personalizado || null], transaction: t }
         );
       }
-      console.log('✅ Tipos de evento insertados:', data.tipos_de_evento.length);
+      console.log('Tipos de evento insertados:', data.tipos_de_evento.length);
     }
 
     if (Array.isArray(data.objetivos) && data.objetivos.length > 0) {
-      let primerIdObjetivo = null; 
-       const objetivosCreados = [];
+      const objetivosCreados = [];
+      let argumentacionInsertada = false;
 
       for (const objetivo of data.objetivos) {
         const idtipoobjetivo = typeof objetivo === 'number' ? objetivo : objetivo.id;
         const texto = typeof objetivo === 'object' ? (objetivo.texto_personalizado || null) : null;
 
-        // 4.1 Insertar en tabla 'objetivos'
         const [result] = await sequelize.query(
           'INSERT INTO objetivos (idtipoobjetivo, texto_personalizado) VALUES (?, ?) RETURNING idobjetivo',
           { replacements: [idtipoobjetivo, texto], transaction: t }
@@ -106,55 +101,70 @@ const createEvento = async (req, res) => {
 
         const nuevoIdObjetivo = result[0]?.idobjetivo;
         if (!nuevoIdObjetivo) {
-          console.warn('⚠️ No se pudo obtener el ID del objetivo creado');
+          console.warn('No se pudo obtener el ID del objetivo creado');
           continue;
         }
         objetivosCreados.push(nuevoIdObjetivo);
-        if (!primerIdObjetivo) primerIdObjetivo = nuevoIdObjetivo;
 
         await sequelize.query(
           'INSERT INTO evento_objetivos (idevento, idobjetivo, texto_personalizado) VALUES (?, ?, ?)',
           { replacements: [nuevoEventoId, nuevoIdObjetivo, texto], transaction: t }
         );
-        console.log(`✅ ${objetivosCreados.length} objetivos creados y vinculados al evento`);
+        console.log(`Objetivo ${objetivosCreados.length} creado con ID: ${nuevoIdObjetivo}`);
 
-         const argumentacionTexto = data.argumentacion?.trim() || data.argumentación?.trim();
-         if (argumentacionTexto && primerIdObjetivo) {
-        await sequelize.query(
-          'INSERT INTO argumentacion (idobjetivo, texto_argumentacion) VALUES (?, ?)',
-          { replacements: [primerIdObjetivo, argumentacionTexto], transaction: t }
-        );
-        console.log('✅ Argumentación vinculada al objetivo ID:', primerIdObjetivo);
-      } else if (!argumentacionTexto) {
-        console.warn('⚠️ No se recibió argumentación o está vacía');
-      }
+        const argumentacionTexto = data.argumentacion?.trim() || data.argumentación?.trim();
+        if (argumentacionTexto && !argumentacionInsertada) {
+          await sequelize.query(
+            'INSERT INTO argumentacion (idobjetivo, texto_argumentacion) VALUES (?, ?)',
+            { replacements: [nuevoIdObjetivo, argumentacionTexto], transaction: t }
+          );
+          argumentacionInsertada = true;
+          console.log('Argumentación vinculada al objetivo ID:', nuevoIdObjetivo);
+        }
 
+        if (Array.isArray(data.segmentos_objetivo) && data.segmentos_objetivo.length > 0) {
+          // Eliminar duplicados
+          const segmentosUnicos = new Map();
+          data.segmentos_objetivo.forEach(segmento => {
+            if (!segmentosUnicos.has(segmento.id)) {
+              segmentosUnicos.set(segmento.id, segmento);
+            }
+          });
 
-        if (Array.isArray(data.segmentos_objetivo) && data.segmentos_objetivo.length > 0 && primerIdObjetivo) {
-          for (const segmento of data.segmentos_objetivo) {
-            await sequelize.query(
-              'INSERT INTO objetivo_segmento (idobjetivo, idsegmento, texto_personalizado) VALUES (?, ?, ?)',
-              { replacements: [primerIdObjetivo, segmento.id, segmento.texto_personalizado || null], transaction: t }
+          for (const segmento of segmentosUnicos.values()) {
+            const [existing] = await sequelize.query(
+              'SELECT 1 FROM objetivo_segmento WHERE idobjetivo = ? AND idsegmento = ?',
+              { replacements: [nuevoIdObjetivo, segmento.id], transaction: t }
             );
+
+            if (existing.length === 0) {
+              await sequelize.query(
+                'INSERT INTO objetivo_segmento (idobjetivo, idsegmento, texto_personalizado) VALUES (?, ?, ?)',
+                { replacements: [nuevoIdObjetivo, segmento.id, segmento.texto_personalizado || null], transaction: t }
+              );
+              console.log(`Segmento ${segmento.id} vinculado al objetivo ${nuevoIdObjetivo}`);
+            } else {
+              console.log(`Segmento ${segmento.id} ya existe para objetivo ${nuevoIdObjetivo}, omitiendo`);
+            }
           }
         }
       }
-       console.log(`✅ ${data.segmentos_objetivo.length} segmentos vinculados al objetivo ID:`, primerIdObjetivo);
+      console.log(`Total objetivos creados: ${objetivosCreados.length}`);
     }
 
     if (Array.isArray(data.objetivos_pdi) && data.objetivos_pdi.length > 0) {
-      const descripcionesValidas = data.objetivos_pdi.filter(d => d && d.trim() !== '');
+      const descripcionesValidas = data.objetivos_pdi
+        .filter(d => d && d.trim() !== '')
+        .slice(0, 3); // Limitar a 3 como mencionaste
       for (const descripcion of descripcionesValidas) {
         await sequelize.query(
           'INSERT INTO evento_pdi (idevento, descripcion) VALUES (?, ?)',
           { replacements: [nuevoEventoId, descripcion], transaction: t }
         );
       }
-      console.log('✅ Objetivos PDI insertados:', descripcionesValidas.length);
+      console.log('Objetivos PDI insertados:', descripcionesValidas.length);
     }
-  
-    // 6. RESULTADOS ESPERADOS
-    // resultado: (idresultados_esperados, idevento, satisfaccion_real, otros_resultados, participacion_esperada, satisfaccion_esperada)
+
     const resultados = typeof data.resultados_esperados === 'string'
       ? JSON.parse(data.resultados_esperados)
       : (data.resultados_esperados || {});
@@ -171,10 +181,8 @@ const createEvento = async (req, res) => {
         transaction: t
       }
     );
-    console.log('✅ Resultados esperados insertados');
+    console.log('Resultados esperados insertados');
 
-    // 7. RECURSOS EXISTENTES
-    // evento_recurso: (idevento, idrecurso, cantidad, observaciones, fecha)
     if (Array.isArray(data.recursos_existentes) && data.recursos_existentes.length > 0) {
       for (const idrecurso of data.recursos_existentes) {
         await sequelize.query(
@@ -182,10 +190,9 @@ const createEvento = async (req, res) => {
           { replacements: [nuevoEventoId, idrecurso], transaction: t }
         );
       }
-      console.log('✅ Recursos existentes vinculados:', data.recursos_existentes.length);
+      console.log('Recursos existentes vinculados:', data.recursos_existentes.length);
     }
 
-    // 8. RECURSOS NUEVOS
     if (Array.isArray(data.recursos_nuevos) && data.recursos_nuevos.length > 0) {
       for (const recurso of data.recursos_nuevos) {
         const [result] = await sequelize.query(
@@ -200,10 +207,9 @@ const createEvento = async (req, res) => {
           );
         }
       }
-      console.log('✅ Recursos nuevos creados:', data.recursos_nuevos.length);
+      console.log('Recursos nuevos creados:', data.recursos_nuevos.length);
     }
 
-    // 9. PRESUPUESTO
     if (data.presupuesto) {
       const presupuesto = await Presupuesto.create({
         idevento: nuevoEventoId,
@@ -239,11 +245,8 @@ const createEvento = async (req, res) => {
           { transaction: t }
         );
       }
-      console.log('✅ Presupuesto insertado');
+      console.log('Presupuesto insertado');
     }
-
-    // 10. COMITÉ
-    // comite: (created_at, idevento, idusuario)
     if (Array.isArray(data.comite) && data.comite.length > 0) {
       for (const idusuario of data.comite) {
         await sequelize.query(
@@ -251,32 +254,39 @@ const createEvento = async (req, res) => {
           { replacements: [nuevoEventoId, idusuario], transaction: t }
         );
       }
-      console.log('✅ Comité insertado:', data.comite.length, 'miembros');
+      console.log('Comité insertado:', data.comite.length, 'miembros');
     }
 
     await t.commit();
+
     if (Array.isArray(data.comite) && data.comite.length > 0) {
-  for (const idusuario of data.comite) {
-    try {
-      await sendNotification({
-        idusuario: idusuario,   // ← un ID a la vez, no el array completo
-        titulo: 'Nuevo evento en tu comité',
-        mensaje: `Se ha creado un nuevo evento: "${nuevoEvento.nombreevento}". Por favor, revísalo lo antes posible.`,
-        tipo: 'nuevo_evento'
-      });
-    } catch (notifError) {
-      // No bloquear si falla la notificación
-      console.warn(`⚠️ No se pudo enviar notificación a usuario ${idusuario}:`, notifError.message);
+      for (const idusuario of data.comite) {
+        try {
+          await sendNotification({
+            idusuario: idusuario,
+            titulo: 'Nuevo evento en tu comité',
+            mensaje: `Se ha creado un nuevo evento: "${nuevoEvento.nombreevento}". Por favor, revísalo lo antes posible.`,
+            tipo: 'nuevo_evento'
+          });
+        } catch (notifError) {
+          console.warn(`No se pudo enviar notificación a usuario ${idusuario}:`, notifError.message);
+        }
+      }
     }
-  }
-}
+
+    const eventoParaNotificar = {
+      nombreevento: nuevoEvento.nombreevento,
+      fechaevento: nuevoEvento.fechaevento,
+      horaevento: nuevoEvento.horaevento,
+      lugarevento: nuevoEvento.lugarevento,
+      responsable_evento: req.user?.nombre || 'No especificado'
+    };
+    enviarNotificacionTelegram(eventoParaNotificar, 'nuevo');
 
     return res.status(201).json({
       message: 'Evento creado exitosamente',
       idevento: nuevoEventoId
     });
-
-    
 
   } catch (error) {
     if (!t.finished) {
@@ -288,7 +298,6 @@ const createEvento = async (req, res) => {
       error: error.message,
       sql: error.parent?.sql || null
     });
-  
   } 
 };
 const getAllEventos = async (req, res) => {
@@ -858,7 +867,13 @@ const aprobarEvento = async (req, res) => {
     const { Evento } = models;
 
 
-    const evento = await Evento.findByPk(id);
+    const evento = await Evento.findByPk(id,{
+      include: [
+        {
+          model: models.Academico, as: 'academicoCreador'},
+          {model: models.Facultad, as: 'facultad'}
+      ]
+    });
     if (!evento) {
       return res.status(404).json({ error: 'Evento no encontrado' });
     }
@@ -866,8 +881,18 @@ const aprobarEvento = async (req, res) => {
     await evento.update({ 
       estado: 'aprobado', fecha_aprobacion: new Date()});
 
-    // Opcional: crear notificación para el creador
-    // (puedes integrar notificationController aquí si lo deseas)
+     const eventoParaNotificar = {
+      nombreevento: evento.nombreevento,
+      fechaevento: evento.fechaevento,
+      horaevento: evento.horaevento,
+      lugarevento: evento.lugarevento,
+      responsable_evento: evento.academico 
+        ? `${evento.academico.nombre} ${evento.academico.apellido || ''}`.trim()
+        : evento.responsable_evento || 'No especificado'
+    };
+
+    enviarNotificacionTelegram(eventoParaNotificar, 'aprobado');
+
 
     return res.status(200).json({ message: 'Evento aprobado correctamente' });
   } catch (error) {
@@ -878,6 +903,7 @@ const aprobarEvento = async (req, res) => {
 
 const rechazarEvento = async (req, res) => {
   const { id } = req.params;
+  //const { motivoRechazo } = req.body;
   try {
    const models = getModels();
     const { Evento } = models;
@@ -888,7 +914,17 @@ const rechazarEvento = async (req, res) => {
       return res.status(404).json({ error: 'Evento no encontrado' });
     }
 
-    await evento.update({ estado: 'rechazado' });
+    await evento.update({ estado: 'rechazado', fecha_rechazo: new Date(),razon_rechazo: req.body.razon_rechazo || null });
+     const eventoParaNotificar = {
+      nombreevento: evento.nombreevento,
+      fechaevento: evento.fechaevento,
+      lugarevento: evento.lugarevento,
+      responsable_evento: evento.academico 
+        ? `${evento.academico.nombre} ${evento.academico.apellido || ''}`.trim()
+        : evento.responsable_evento || 'No especificado'
+    };
+
+    enviarNotificacionTelegram(eventoParaNotificar, 'rechazado');
 
     return res.status(200).json({ message: 'Evento rechazado correctamente' });
   } catch (error) {
@@ -933,8 +969,6 @@ const fetchEventById = async (id) => {
     throw error;
   }
 };
-
-
 const getEventosAprobados = asyncHandler(async (req, res) => {
   const models = getModels();
   const { Evento, User, Fase } = models;
@@ -1274,20 +1308,15 @@ const getEventosNoAprobados = async (req, res) => {
         const userId = req.user.idusuario;
         const userRole = req.user.role;
         
-        // --- NUEVO: Calcular fecha límite (hace 1 mes) ---
         const fechaLimite = new Date();
         fechaLimite.setMonth(fechaLimite.getMonth() - 1);
-        // -------------------------------------------------
 
         let eventos;
         if (userRole === 'admin' || userRole === 'daf') {
-            // ✅ Admin/DAF ven TODOS los eventos pendientes RECIENTES
             eventos = await Evento.findAll({
                 where: { 
                     estado: 'pendiente',
-                    // --- NUEVO: Filtrar por fecha de creación ---
                     created_at: { [Op.gte]: fechaLimite } 
-                    // Si prefieres filtrar por la fecha del evento usa: fechaevento: { [Op.gte]: fechaLimite }
                 },
                 distinct: true,
                 attributes: { include: ['idfase'] },
@@ -1348,7 +1377,6 @@ const getEventosNoAprobados = async (req, res) => {
             return res.status(403).json({ message: 'Acceso denegado' });
         }
 
-        // ... (El resto del código de formateado se mantiene igual) ...
         const eventosUnicos = Array.from(
             new Map(eventos.map(e => [e.idevento, e])).values()
         );
@@ -1387,9 +1415,6 @@ const getEventosNoAprobados = async (req, res) => {
         return res.status(500).json({ error: 'Error al cargar eventos pendientes' });
     }
 };
-  
-
-  
 const getDashboardStats = asyncHandler(async (req, res) => {
   const models = getModels();
   const sequelize = models.sequelize;
@@ -1762,6 +1787,71 @@ const diagnosticarModelos = asyncHandler(async (req, res) => {
     });
   }
 });
+const enviarNotificacionTelegram = async (evento, tipoNotificacion = 'aprobado') => {
+  try {
+    const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+    const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+    if (!BOT_TOKEN || !CHAT_ID) {
+      console.warn('⚠️ Variables de Telegram no configuradas');
+      return;
+    }
+
+    let mensaje = '';
+    let emoji = '';
+
+    if (tipoNotificacion === 'aprobado') {
+      emoji = '✅';
+      mensaje = `
+${emoji} *EVENTO APROBADO* ${emoji}
+
+📌 *Nombre:* ${evento.nombreevento || 'Sin nombre'}
+📅 *Fecha:* ${evento.fechaevento || 'No definida'}
+⏰ *Hora:* ${evento.horaevento || 'No definida'}
+📍 *Lugar:* ${evento.lugarevento || 'No definido'}
+👤 *Responsable:* ${evento.responsable_evento || 'No especificado'}
+
+🎉 El evento ha sido aprobado y está listo para realizarse.
+      `;
+    } else if (tipoNotificacion === 'rechazado') {
+      emoji = '❌';
+      mensaje = `
+${emoji} *EVENTO RECHAZADO* ${emoji}
+
+📌 *Nombre:* ${evento.nombreevento || 'Sin nombre'}
+📅 *Fecha:* ${evento.fechaevento || 'No definida'}
+📍 *Lugar:* ${evento.lugarevento || 'No definido'}
+👤 *Responsable:* ${evento.responsable_evento || 'No especificado'}
+
+⚠️ El evento ha sido rechazado. Contacta al responsable para más información.
+      `;
+    } else if (tipoNotificacion === 'nuevo') {
+      emoji = '🆕';
+      mensaje = `
+${emoji} *NUEVO EVENTO REGISTRADO* ${emoji}
+
+📌 *Nombre:* ${evento.nombreevento || 'Sin nombre'}
+📅 *Fecha:* ${evento.fechaevento || 'No definida'}
+⏰ *Hora:* ${evento.horaevento || 'No definida'}
+📍 *Lugar:* ${evento.lugarevento || 'No definido'}
+👤 *Responsable:* ${evento.responsable_evento || 'No especificado'}
+
+📝 *Estado:* Pendiente de aprobación
+      `;
+    }
+
+    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      chat_id: CHAT_ID,
+      text: mensaje,
+      parse_mode: 'Markdown'
+    });
+
+    console.log(`✅ Notificación de Telegram enviada: ${tipoNotificacion}`);
+  } catch (error) {
+    console.error('❌ Error enviando notificación a Telegram:', error.response?.data || error.message);
+    // No lanzamos error para no bloquear el flujo principal
+  }
+};
 
 module.exports ={
     createEvento,
@@ -1783,5 +1873,6 @@ module.exports ={
     getEstudianteFacultad,
     getCarreraById,
     getFacultadById,
-    diagnosticarModelos
+    diagnosticarModelos,
+    enviarNotificacionTelegram
 }

@@ -603,7 +603,7 @@ const getEventoById = asyncHandler(async (req, res) => {
        LEFT JOIN "tipos_objetivo" t ON o."idtipoobjetivo" = t."idtipoobjetivo" 
        LEFT JOIN "objetivo_segmento" os ON o."idobjetivo" = os."idobjetivo"
        LEFT JOIN "segmento" s ON os."idsegmento" = s."idsegmento"
-       LEFT JOIN "argumentacion" a ON o."idobjetivo" = a."idobjetivo"
+       LEFT JOIN "argumentacion" a ON eo."idevento" = a."idevento"
        WHERE eo."idevento" = ?`,
       { replacements: [eventIdNum] }
     );

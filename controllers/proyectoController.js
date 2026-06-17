@@ -956,13 +956,17 @@ const aprobarEvento = async (req, res) => {
     const { Evento } = models;
 
 
-    const evento = await Evento.findByPk(id,{
+    const evento = await Evento.findByPk(id, {
+  include: [
+    { 
+      model: models.Academico, 
+      as: 'creador',
       include: [
-        {
-          model: models.Academico, as: 'creador'},
-          {model: models.Facultad, as: 'facultad'}
+        { model: models.Facultad, as: 'facultad' }  // ← Incluir aquí
       ]
-    });
+    }
+  ]
+});
     if (!evento) {
       return res.status(404).json({ error: 'Evento no encontrado' });
     }

@@ -86,76 +86,71 @@ const createEvento = async (req, res) => {
       console.log('Tipos de evento insertados:', data.tipos_de_evento.length);
     }
 
+    
     if (Array.isArray(data.objetivos) && data.objetivos.length > 0) {
-      const objetivosCreados = [];
-      let argumentacionInsertada = false;
-
       for (const objetivo of data.objetivos) {
         const idtipoobjetivo = typeof objetivo === 'number' ? objetivo : objetivo.id;
         const texto = typeof objetivo === 'object' ? (objetivo.texto_personalizado || null) : null;
 
-        const [result] = await sequelize.query(
-          'INSERT INTO objetivos (idtipoobjetivo, texto_personalizado) VALUES (?, ?) RETURNING idobjetivo',
-          { replacements: [idtipoobjetivo, texto], transaction: t }
+        // Verificar si ya existe un objetivo de este tipo para este evento
+        const [existing] = await sequelize.query(
+          'SELECT eo.* FROM evento_objetivos eo WHERE eo.idevento = ? AND eo.idtipoobjetivo = ?',
+          { replacements: [nuevoEventoId, idtipoobjetivo], transaction: t }
         );
 
-        const nuevoIdObjetivo = result[0]?.idobjetivo;
-        if (!nuevoIdObjetivo) {
-          console.warn('No se pudo obtener el ID del objetivo creado');
-          continue;
-        }
-        objetivosCreados.push(nuevoIdObjetivo);
-
-        await sequelize.query(
-          'INSERT INTO evento_objetivos (idevento, idobjetivo, texto_personalizado) VALUES (?, ?, ?)',
-          { replacements: [nuevoEventoId, nuevoIdObjetivo, texto], transaction: t }
-        );
-        console.log(`Objetivo ${objetivosCreados.length} creado con ID: ${nuevoIdObjetivo}`);
-
-        const argumentacionTexto = data.argumentacion?.trim() || data.argumentación?.trim();
-        if (argumentacionTexto && !argumentacionInsertada) {
+        if (existing.length === 0) {
+          // Insertar en la tabla intermedia evento_objetivos
           await sequelize.query(
-            'INSERT INTO argumentacion (idobjetivo, texto_argumentacion) VALUES (?, ?)',
-            { replacements: [nuevoIdObjetivo, argumentacionTexto], transaction: t }
+            'INSERT INTO evento_objetivos (idevento, idtipoobjetivo, texto_personalizado) VALUES (?, ?, ?)',
+            { replacements: [nuevoEventoId, idtipoobjetivo, texto], transaction: t }
           );
-          argumentacionInsertada = true;
-          console.log('Argumentación vinculada al objetivo ID:', nuevoIdObjetivo);
-        }
-
-        if (Array.isArray(data.segmentos_objetivo) && data.segmentos_objetivo.length > 0) {
-          // Eliminar duplicados
-          const segmentosUnicos = new Map();
-          data.segmentos_objetivo.forEach(segmento => {
-            if (!segmentosUnicos.has(segmento.id)) {
-              segmentosUnicos.set(segmento.id, segmento);
-            }
-          });
-
-          for (const segmento of segmentosUnicos.values()) {
-            const [existing] = await sequelize.query(
-              'SELECT 1 FROM objetivo_segmento WHERE idobjetivo = ? AND idsegmento = ?',
-              { replacements: [nuevoIdObjetivo, segmento.id], transaction: t }
-            );
-
-            if (existing.length === 0) {
-              await sequelize.query(
-                'INSERT INTO objetivo_segmento (idobjetivo, idsegmento, texto_personalizado) VALUES (?, ?, ?)',
-                { replacements: [nuevoIdObjetivo, segmento.id, segmento.texto_personalizado || null], transaction: t }
-              );
-              console.log(`Segmento ${segmento.id} vinculado al objetivo ${nuevoIdObjetivo}`);
-            } else {
-              console.log(`Segmento ${segmento.id} ya existe para objetivo ${nuevoIdObjetivo}, omitiendo`);
-            }
-          }
+          console.log(`Objetivo tipo ${idtipoobjetivo} vinculado al evento ${nuevoEventoId}`);
         }
       }
-      console.log(`Total objetivos creados: ${objetivosCreados.length}`);
+    }
+
+    // 5. Insertar argumentación (UNA sola por evento)
+    const argumentacionTexto = data.argumentacion?.trim() || data.argumentación?.trim();
+    if (argumentacionTexto) {
+      await sequelize.query(
+        'INSERT INTO argumentacion (idevento, texto_argumentacion) VALUES (?, ?)',
+        { replacements: [nuevoEventoId, argumentacionTexto], transaction: t }
+      );
+      console.log('Argumentación insertada para el evento:', nuevoEventoId);
+    }
+
+    if (Array.isArray(data.segmentos_objetivo) && data.segmentos_objetivo.length > 0) {
+      // Eliminar duplicados
+      const segmentosUnicos = new Map();
+      data.segmentos_objetivo.forEach(segmento => {
+        if (!segmentosUnicos.has(segmento.id)) {
+          segmentosUnicos.set(segmento.id, segmento);
+        }
+      });
+
+      for (const segmento of segmentosUnicos.values()) {
+        const [existing] = await sequelize.query(
+          'SELECT 1 FROM evento_segmento WHERE idevento = ? AND idsegmento = ?',
+          { replacements: [nuevoEventoId, segmento.id], transaction: t }
+        );
+
+        if (existing.length === 0) {
+          await sequelize.query(
+            'INSERT INTO evento_segmento (idevento, idsegmento, texto_personalizado) VALUES (?, ?, ?)',
+            { replacements: [nuevoEventoId, segmento.id, segmento.texto_personalizado || null], transaction: t }
+          );
+          console.log(`Segmento ${segmento.id} vinculado al evento ${nuevoEventoId}`);
+        } else {
+          console.log(`Segmento ${segmento.id} ya existe para evento ${nuevoEventoId}, omitiendo`);
+        }
+      }
     }
 
     if (Array.isArray(data.objetivos_pdi) && data.objetivos_pdi.length > 0) {
       const descripcionesValidas = data.objetivos_pdi
         .filter(d => d && d.trim() !== '')
-        .slice(0, 3); // Limitar a 3 como mencionaste
+        .slice(0, 3); // Limitar a 3
+      
       for (const descripcion of descripcionesValidas) {
         await sequelize.query(
           'INSERT INTO evento_pdi (idevento, descripcion) VALUES (?, ?)',
@@ -164,6 +159,7 @@ const createEvento = async (req, res) => {
       }
       console.log('Objetivos PDI insertados:', descripcionesValidas.length);
     }
+
 
     const resultados = typeof data.resultados_esperados === 'string'
       ? JSON.parse(data.resultados_esperados)

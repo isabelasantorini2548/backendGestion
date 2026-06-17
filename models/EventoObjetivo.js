@@ -9,12 +9,12 @@ const EventoObjetivo = sequelize.define('EventoObjetivo', {
       key:'idevento'
     }
   },
-  idobjetivo: {
+  idtipoobjetivo: {
     type: DataTypes.INTEGER,
     primaryKey: true,
     references:{
-      model:'objetivos',
-      key: 'idobjetivo'
+      model:'tipos_objetivo',
+      key: 'idtipoobjetivo'
     }
   },
   texto_personalizado: {

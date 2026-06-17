@@ -8,13 +8,13 @@ module.exports = (sequelize, DataTypes) => {
       primaryKey: true,
       autoIncrement: true,
     },
-   idobjetivo: {
+   idevento: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      field: 'idobjetivo',
+      field: 'idevento',
        references: {
-        model: 'objetivo',
-        key: 'idobjetivo'
+        model: 'evento',
+        key: 'idevento'
       }
     },
     texto_argumentacion: {

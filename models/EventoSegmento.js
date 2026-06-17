@@ -1,11 +1,11 @@
 module.exports = (sequelize,DataTypes) => {
-const ObjetivoSegmento = sequelize.define('ObjetivoSegmento', {
-  idobjetivo: {
+const EventoSegmento = sequelize.define('EventoSegmento', {
+  idevento: {
     type: DataTypes.INTEGER,
     allowNull: false,
     primaryKey: true,
-    field: 'idobjetivo', 
-      references: { model: 'Objetivo', key: 'idobjetivo' }
+    field: 'idevento',
+      references: { model: 'Evento', key: 'idevento' }
   },
   idsegmento: {
     type: DataTypes.INTEGER,
@@ -19,9 +19,9 @@ const ObjetivoSegmento = sequelize.define('ObjetivoSegmento', {
     allowNull: false,
   }
 }, {
-  tableName: 'objetivo_segmento', 
+  tableName: 'evento_segmento', 
   timestamps: false ,
 });
 
-return  ObjetivoSegmento;
+return  EventoSegmento;
 };

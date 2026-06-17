@@ -17,6 +17,14 @@ const EventoObjetivo = sequelize.define('EventoObjetivo', {
       key: 'idtipoobjetivo'
     }
   },
+  idobjetivo: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    references:{
+      model:'objetivo',
+      key:'idobjetivo'
+    }
+  },
   texto_personalizado: {
     type: DataTypes.STRING,
     allowNull: true,

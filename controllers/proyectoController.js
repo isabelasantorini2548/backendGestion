@@ -119,6 +119,7 @@ const createEvento = async (req, res) => {
       console.log('Argumentación insertada para el evento:', nuevoEventoId);
     }
 
+    // 6. Insertar segmentos objetivo (vinculados al EVENTO, no a objetivos)
     if (Array.isArray(data.segmentos_objetivo) && data.segmentos_objetivo.length > 0) {
       // Eliminar duplicados
       const segmentosUnicos = new Map();
@@ -495,25 +496,24 @@ const getEventoById = asyncHandler(async (req, res) => {
     const clasificacion = clasificacionData[0] || null;
 
     const [objetivosRaw] = await sequelize.query(
-      `SELECT 
-        eo."idevento",
-         o."idobjetivo", 
-         o."idtipoobjetivo", 
-         o."texto_personalizado",
-         t."nombre_objetivo",  
-         s."nombre_segmento", 
-         s."idsegmento",
-         os."texto_personalizado" AS segmento_texto,
-         a."texto_argumentacion" AS argumentacion
-       FROM "evento_objetivos" eo
-       JOIN "objetivos" o ON eo."idobjetivo" = o."idobjetivo"
-       LEFT JOIN "tipos_objetivo" t ON o."idtipoobjetivo" = t."idtipoobjetivo" 
-       LEFT JOIN "objetivo_segmento" os ON o."idobjetivo" = os."idobjetivo"
-       LEFT JOIN "segmento" s ON os."idsegmento" = s."idsegmento"
-       LEFT JOIN "argumentacion" a ON o."idobjetivo" = a."idobjetivo"
-       WHERE eo."idevento" = ?`,
-      { replacements: [eventIdNum] }
-    );
+  `SELECT 
+    a."idevento",
+    o."idobjetivo", 
+    o."idtipoobjetivo", 
+    o."texto_personalizado",
+    t."nombre_objetivo",  
+    s."nombre_segmento", 
+    s."idsegmento",
+    os."texto_personalizado" AS segmento_texto,
+    a."texto_argumentacion" AS argumentacion
+  FROM "objetivos" o
+  LEFT JOIN "tipos_objetivo" t ON o."idtipoobjetivo" = t."idtipoobjetivo"
+  LEFT JOIN "argumentacion" a ON o."idargumentacion" = a."idargumentacion"
+  LEFT JOIN "objetivo_segmento" os ON o."idobjetivo" = os."idobjetivo"
+  LEFT JOIN "segmento" s ON os."idsegmento" = s."idsegmento"
+  WHERE a."idevento" = ?`,
+  { replacements: [eventIdNum] }
+);
 
     // Agrupar objetivos (tu lógica existente)
     const objetivosMap = new Map();

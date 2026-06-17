@@ -45,7 +45,7 @@ module.exports = (sequelize, DataTypes) => {
     Academico.belongsTo(models.Carrera, { foreignKey: 'idcarrera', as: 'carrera' });
    /* Academico.belongsTo(models.User, { foreignKey: 'idacademico', as: 'academicoCreador' });  
     Academico.belongsTo(models.Comite,{foreignKey: 'idacademico', through: 'ComiteUsuarios'});*/
-    Academico.hasMany(Evento, { 
+    Academico.hasMany(models.Evento, { 
     foreignKey: 'idacademico',
     as: 'eventos'
 });

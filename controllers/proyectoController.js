@@ -959,7 +959,7 @@ const aprobarEvento = async (req, res) => {
     const evento = await Evento.findByPk(id,{
       include: [
         {
-          model: models.Academico, as: 'academicoCreador'},
+          model: models.Academico, as: 'creador'},
           {model: models.Facultad, as: 'facultad'}
       ]
     });

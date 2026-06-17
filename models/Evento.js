@@ -162,7 +162,7 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'idlayout',
       as: 'Layout'
     });
-    Evento.belongsTo(Academico, { 
+    Evento.belongsTo(models.Academico, { 
     foreignKey: 'idacademico', 
     as: 'creador' // alias opcional
     });

@@ -63,7 +63,6 @@ const createUser = asyncHandler(async (req, res) => {
     throw new Error('No se pudo crear el usuario.');
   }
 
-  // ✅ Crear registro según el rol
   if (role === 'academico') {
     if (!idcarrera || !idfacultad) {
       res.status(400);
@@ -114,6 +113,7 @@ const getAllUsers = asyncHandler(async (req, res) => {
   const models = getModels();
   const {User,Academico, Carrera} = models;
   const users = await User.findAll({
+    where:{ habilitado: true },
      include: [
     {
       model: Academico,

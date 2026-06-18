@@ -142,7 +142,7 @@ const getMyDashboardStats = asyncHandler(async (req, res) => {
      console.log('🔍 req.user completo:', JSON.stringify(req.user, null, 2));
     
     const models = getModels();
-    const { idusuario } = req.user;
+    const { idusuario, role } = req.user;
 
     if (!idusuario) {
       return res.status(401).json({ error: 'Usuario no identificado' });
@@ -150,12 +150,54 @@ const getMyDashboardStats = asyncHandler(async (req, res) => {
     console.log('👤 idusuario:', idusuario);
     const { Evento, Academico } = models;
 
+        const isAdminOrSistemas = role === 'admin' || email === 'sistemas@gmail.com';
+    
+    if (isAdminOrSistemas) {
+      console.log('👑 Usuario especial - Mostrando TODOS los eventos');
+      
+      const totalEvents = await Evento.count();
+      
+      const eventosPorEstado = await Evento.findAll({
+        attributes: ['estado', 'fechaevento']
+      });
+
+      const estadoCounts = {};
+      eventosPorEstado.forEach(evento => {
+        const estado = evento.estado || 'sin_estado';
+        estadoCounts[estado] = (estadoCounts[estado] || 0) + 1;
+      });
+
+      const stats = {
+        totalEvents,
+        estadoCounts,
+        eventosAprobadosMes: estadoCounts.aprobado || 0,
+        tasaAprobacion: totalEvents > 0 ? Math.round(((estadoCounts.aprobado || 0) / totalEvents) * 100) : 0
+      };
+
+      return res.status(200).json(stats);
+    }
+
+    // ✅ Académico normal - Ver solo SUS eventos
+    console.log('👤 Académico normal - Buscando perfil académico para idusuario:', idusuario);
+    
+
     const academicos = await Academico.findAll({
       where: { idusuario }
     });
       console.log('🎓 academicos encontrados:', JSON.stringify(academicos, null, 2));
     if (!academicos || academicos.length === 0) {
       return res.status(403).json({ error: 'No tienes perfil de académico registrado.' });
+    }
+
+     if (!academicos || academicos.length === 0) {
+      console.warn('⚠️ Usuario', idusuario, 'no tiene perfil de académico');
+      // Retornar stats vacíos en lugar de error
+      return res.status(200).json({
+        totalEvents: 0,
+        estadoCounts: {},
+        eventosAprobadosMes: 0,
+        tasaAprobacion: 0
+      });
     }
 
     const idsAcademico = academicos.map(a => a.idacademico || a.idacademico).filter(Boolean);

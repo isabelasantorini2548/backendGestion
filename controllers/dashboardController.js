@@ -20,7 +20,6 @@ const getDashboardStats = asyncHandler(async (req, res) => {
           [Op.or]: [
             { habilitado: '1' },
             { habilitado: 'true' },
-            { habilitado: 1 }
           ]
         } 
       }),

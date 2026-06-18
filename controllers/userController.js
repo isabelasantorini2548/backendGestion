@@ -159,16 +159,6 @@ const getCarrera= asyncHandler(async (req,res)=>{
     res.status(500).json({ message: 'Error al obtener carreras', error });
   }
 });
-const getFacultades = asyncHandler(async (req, res) => {
-  try {
-    const models = getModels();
-    const { Facultad } = models;
-    const facultades = await Facultad.findAll();
-    res.status(200).json(facultades);
-  } catch (error) {
-    res.status(500).json({ message: 'Error al obtener facultades', error });
-  }
-});
 
 const getUserProfile = asyncHandler(async (req, res) => {
   try {
@@ -741,5 +731,4 @@ module.exports = {
   getUserProfile,
   getUserByEmail,
   getUsersDaf,
-  getFacultades
 };

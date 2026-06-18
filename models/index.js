@@ -2,6 +2,7 @@ const { Sequelize,DataTypes } = require('sequelize');
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const { getFacultades } = require('../controllers/userController');
 
 
 let _sequelize;
@@ -129,7 +130,8 @@ const initModels = async () => {
     'Ingreso.js',
     'Egreso.js',
     'Message.js',
-    
+    'Facultades.js',
+    'Carrera.js',
     'ChatMensaje.js'
   ];
 

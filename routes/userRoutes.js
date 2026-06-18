@@ -15,7 +15,8 @@ const {
   getId,
   updateUser,
   getUserByEmail,
-  getUsersDaf
+  getUsersDaf,
+  getFacultades
   
 } = require('../controllers/userController.js');
 const router = express.Router();
@@ -23,6 +24,7 @@ const router = express.Router();
 router.post('/users', createUser); 
 router.post('/link-telegram', linkTelegramAccount); // No protection needed if linking is public
 router.get('/carreras', getCarrera); 
+router.get('/facultades', getFacultades);
 
 router.get('/comite',protect,authorize(['admin', 'academico']), getComite);
 router.get('/users/comite', protect, authorize(['admin', 'academico']), getComiteUser);
@@ -32,7 +34,7 @@ router.get('/users', protect, authorize(['admin']), getAllUsers);
 router.get('/users/daf', protect, authorize(['admin']), getUsersDaf);
 router.get('/',getAllUsers);
 
-router.get('/:id', protect,authorize(['admin']), getUserById);
+router.get('/:id', protect,authorize(['admin','daf']), getUserById);
 router.get('/email/:email', getUserByEmail);
 //router.put('/users/', protect, authorize(['admin']), updateUserRole);
 

@@ -112,7 +112,9 @@ if (role === 'academico' || role === 'student') {
       apellidopat,
       apellidomat,
       role: role || 'student',
-      habilitado: habilitado || true,
+      habilitado: habilitado !== undefined 
+  ? (habilitado === true || habilitado === 'true' || habilitado === 1 ? 'true' : 'false')
+  : 'true',
       facultad_id: validatedFacultadId,
       created_at: new Date(),
     },{
@@ -292,7 +294,9 @@ const  registerUserStudent = async (req, res) => {
       apellidopat,
       apellidomat,
       role: role || 'student',
-      habilitado: habilitado || '1',
+      habilitado: habilitado !== undefined 
+  ? (habilitado === true || habilitado === 'true' || habilitado === 1 || habilitado === '1' ? 'true' : 'false')
+  : 'true',
       facultad_id: validatedFacultadId, 
     }, {
       returning: true
@@ -402,10 +406,15 @@ const loginUser = async (req, res) => {
     }
     console.log(`Login attempt: User found for email - ${email}, ID: ${user.idusuario}`);
 
-    if (user.habilitado !== true && user.habilitado !== '1') {
-        console.warn(`Login attempt failed: Account disabled for user ID - ${user.idusuario}`);
-        return res.status(403).json({ message: 'Tu cuenta está deshabilitada. Contacta al administrador.' });
-    }
+    const estaHabilitado = user.habilitado === 'true' || 
+                       user.habilitado === '1' || 
+                       user.habilitado === true ||
+                       user.habilitado === 1;
+
+if (!estaHabilitado) {
+    console.warn(`Login attempt failed: Account disabled for user ID - ${user.idusuario}`);
+    return res.status(403).json({ message: 'Tu cuenta está deshabilitada. Contacta al administrador.' });
+}
     const isMatch = await user.matchPassword(password);
 
     if (!isMatch) {

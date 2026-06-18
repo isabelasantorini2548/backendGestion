@@ -55,9 +55,9 @@ const createUser = asyncHandler(async (req, res) => {
     email,
     contrasenia,
     role,
-    habilitado: habilitado !== undefined 
-    ? (habilitado === true || habilitado === 'true' || habilitado === 1 ? 'true' : 'false')
-    : 'true',
+   habilitado: habilitado !== undefined 
+  ? (habilitado === true || habilitado === 'true' || habilitado === 1 ? 'true' : 'false')
+  : 'true',
   });
 
    if (!newUser) {
@@ -268,13 +268,11 @@ const updateUser = asyncHandler(async (req, res) => {
     if (apellidomat !== undefined) user.apellidomat = apellidomat;
     if (email) user.email = email;
 
-     if (habilitado !== undefined) {
+    if (habilitado !== undefined) {
   let valorHabilitado;
   
   if (typeof habilitado === 'string') {
-    valorHabilitado = (habilitado === 'true' || habilitado === '1' || habilitado === 't') 
-      ? 'true' 
-      : 'false';
+    valorHabilitado = (habilitado === 'true' || habilitado === '1' || habilitado === 't') ? 'true' : 'false';
   } else if (typeof habilitado === 'boolean') {
     valorHabilitado = habilitado ? 'true' : 'false';
   } else {

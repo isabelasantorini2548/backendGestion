@@ -55,7 +55,9 @@ const createUser = asyncHandler(async (req, res) => {
     email,
     contrasenia,
     role,
-    habilitado: habilitado !== undefined ? habilitado : true,
+    habilitado: habilitado !== undefined 
+    ? (habilitado === true || habilitado === 'true' || habilitado === 1 ? 'true' : 'false')
+    : 'true',
   });
 
    if (!newUser) {
@@ -267,23 +269,21 @@ const updateUser = asyncHandler(async (req, res) => {
     if (email) user.email = email;
 
      if (habilitado !== undefined) {
-      // Convertir a booleano o número según el tipo de tu BD
-      let valorHabilitado;
-      
-      if (typeof habilitado === 'string') {
-        // Si viene como string "true", "false", "1", "0"
-        valorHabilitado = habilitado === 'true' || habilitado === '1' || habilitado === 't' ? 1 : 0;
-      } else if (typeof habilitado === 'boolean') {
-        // Si viene como booleano true/false
-        valorHabilitado = habilitado ? 1 : 0;
-      } else {
-        // Si ya es número (1 o 0)
-        valorHabilitado = habilitado ? 1 : 0;
-      }
-      
-      console.log('📝 Actualizando habilitado a:', valorHabilitado);
-      user.habilitado = valorHabilitado;
-    }
+  let valorHabilitado;
+  
+  if (typeof habilitado === 'string') {
+    valorHabilitado = (habilitado === 'true' || habilitado === '1' || habilitado === 't') 
+      ? 'true' 
+      : 'false';
+  } else if (typeof habilitado === 'boolean') {
+    valorHabilitado = habilitado ? 'true' : 'false';
+  } else {
+    valorHabilitado = habilitado ? 'true' : 'false';
+  }
+  
+  console.log('📝 Actualizando habilitado a:', valorHabilitado);
+  user.habilitado = valorHabilitado;
+}
 
     if (contrasenia && contrasenia.trim() !== '') {
       //const salt = await bcrypt.genSalt(10);

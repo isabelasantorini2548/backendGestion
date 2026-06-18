@@ -132,7 +132,23 @@ const getAllUsers = asyncHandler(async (req, res) => {
 });
   res.status(200).json(users);
 });
+const getUsersDaf = asyncHandler(async (req, res) => {
+  const models = getModels();
+  const { User,Daf } = models;
+  const usersDaf = await User.findAll({
+    where: { role: 'daf' }, // Filtra por usuarios con rol 'daf'
+    include: [
+      {
+        model: Daf,
+        as: 'daf', // Asegúrate de que este alias coincida con tu asociación
+        attributes: ['nivelAcceso'] // Solo traer el nivel de acceso
+      }
+    ],
+    attributes: { exclude: ['contrasenia'] } // Excluye la contraseña por seguridad
+  });
 
+  res.status(200).json(usersDaf);
+})
 const getCarrera= asyncHandler(async (req,res)=>{
   try {
       const models =  getModels();
@@ -712,5 +728,6 @@ module.exports = {
   getFacultades,
   getCarrera,
   getUserProfile,
-  getUserByEmail
+  getUserByEmail,
+  getUsersDaf
 };

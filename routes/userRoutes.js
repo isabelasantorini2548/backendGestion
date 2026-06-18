@@ -15,6 +15,7 @@ const {
   getId,
   updateUser,
   getUserByEmail,
+  getUsersDaf
   
 } = require('../controllers/userController.js');
 const router = express.Router();
@@ -26,7 +27,9 @@ router.get('/carreras', getCarrera);
 router.get('/comite',protect,authorize(['admin', 'academico']), getComite);
 router.get('/users/comite', protect, authorize(['admin', 'academico']), getComiteUser);
 //router.get('/notificaciones',protect,authorize(['admin', 'academico']), getAllUsers);
+
 router.get('/users', protect, authorize(['admin']), getAllUsers);
+router.get('/users/daf', getUsersDaf);
 router.get('/',getAllUsers);
 
 router.get('/:id', protect,authorize(['admin']), getUserById);

@@ -7,86 +7,115 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     const models = getModels();
     const { User, Evento, sequelize } = models;
 
-    // 1. Usuarios activos (Habilitado es string '1')
-    const activeUsers = await User.count({ where: { habilitado: '1' } });
-    const totalEvents = await Evento.count();
-
-    // 2. Usuarios nuevos (Usamos 'createdAt' que suele ser el estándar de Sequelize para User)
-    const ahora = new Date();
-    const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
-    const [resultadoNuevos] = await sequelize.query(
-      `SELECT COUNT(*) as total FROM usuario WHERE "created_at" >= :inicioMes`, 
-      { replacements: { inicioMes }, type: sequelize.QueryTypes.SELECT }
-    );
-    const usuariosNuevosEsteMes = parseInt(resultadoNuevos?.total || 0);
-
-    // 3. Conteos por estado (Cambiamos created_at por fechaevento)
-    const todosLosEventos = await Evento.findAll({
-      attributes: ['estado', 'fechaevento']
-    });
-
-    const estadoCounts = todosLosEventos.reduce((acc, evento) => {
-      const estado = evento.estado || 'sin_estado';
-      acc[estado] = (acc[estado] || 0) + 1;
-      return acc;
-    }, {});
-
-    const primerDiaDelMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
-    const eventosAprobadosMes = todosLosEventos.filter(evento => {
-      const fecha = new Date(evento.fechaevento);
-      return evento.estado === 'aprobado' && fecha >= primerDiaDelMes;
-    }).length;
-
-    const tasaAprobacion = totalEvents > 0 
-      ? Math.round(((estadoCounts.aprobado || 0) / totalEvents) * 100) 
-      : 0;
-
-    // 4. Eventos por Facultad (Mantenemos tu lógica SQL)
-    let eventosPorFacultad = [];
-    try {
-      const result = await sequelize.query(`
+    const [
+      activeUsers,
+      totalEvents,
+      estadoCountsResult,
+      nuevosUsuariosResult,
+      eventosPorFacultad,
+      eventosPorDia
+    ] = await Promise.all([
+      User.count({ 
+        where: { 
+          [Op.or]: [
+            { habilitado: '1' },
+            { habilitado: 'true' },
+            { habilitado: 1 }
+          ]
+        } 
+      }),
+      Evento.count(),
+      Evento.findAll({
+        attributes: [
+          'estado',
+          [sequelize.fn('COUNT', sequelize.col('idevento')), 'total']
+        ],
+        group: ['estado'],
+        raw: true
+      }),
+      sequelize.query(
+        `SELECT COUNT(*) as total FROM usuario WHERE "created_at" >= :inicioMes`,
+        { 
+          replacements: { 
+            inicioMes: new Date(new Date().getFullYear(), new Date().getMonth(), 1) 
+          }, 
+          type: sequelize.QueryTypes.SELECT 
+        }
+      ),
+      sequelize.query(`
         SELECT f.nombre_facultad as facultad, COUNT(e.idevento) as total
         FROM facultad f
         LEFT JOIN academico a ON f.facultad_id = a.facultad_id
         LEFT JOIN evento e ON a.idacademico = e.idacademico
-        GROUP BY f.nombre_facultad ORDER BY total DESC
-      `, { type: sequelize.QueryTypes.SELECT });
-      eventosPorFacultad = result.map(r => ({ facultad: r.facultad, total: parseInt(r.total) }));
-    } catch (e) { console.warn('Error Facultad:', e.message); }
-
-    // 5. Eventos por día (Usamos fecha_aprobacion que sí existe)
-    let eventosPorDia = [];
-    try {
-      const results = await sequelize.query(`
+        GROUP BY f.nombre_facultad 
+        ORDER BY total DESC
+        LIMIT 10
+      `, { type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(`
         SELECT DATE("fecha_aprobacion") as fecha, COUNT(*) as total
         FROM "evento"
         WHERE "fecha_aprobacion" >= CURRENT_DATE - INTERVAL '6 days'
-        GROUP BY DATE("fecha_aprobacion") ORDER BY fecha ASC
-      `, { type: sequelize.QueryTypes.SELECT });
+        GROUP BY DATE("fecha_aprobacion") 
+        ORDER BY fecha ASC
+      `, { type: sequelize.QueryTypes.SELECT })
+    ]);
 
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const ds = d.toISOString().split('T')[0];
-        const found = results.find(r => r.fecha === ds);
-        eventosPorDia.push({ fecha: ds, total: found ? parseInt(found.total) : 0 });
-      }
-    } catch (e) { console.warn('Error Días:', e.message); }
+    const estadoCounts = {};
+    estadoCountsResult.forEach(row => {
+      estadoCounts[row.estado || 'sin_estado'] = parseInt(row.total);
+    });
+
+    const usuariosNuevosEsteMes = parseInt(nuevosUsuariosResult[0]?.total || 0);
+    const eventosAprobadosMes = estadoCounts.aprobado || 0;
+    const tasaAprobacion = totalEvents > 0 
+      ? Math.round((estadoCounts.aprobado / totalEvents) * 100) 
+      : 0;
+
+    const eventosPorDiaCompleto = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split('T')[0];
+      const found = eventosPorDia.find(r => {
+        const fechaStr = r.fecha instanceof Date 
+          ? r.fecha.toISOString().split('T')[0] 
+          : r.fecha;
+        return fechaStr === ds;
+      });
+      eventosPorDiaCompleto.push({ 
+        fecha: ds, 
+        total: found ? parseInt(found.total) : 0 
+      });
+    }
 
     res.status(200).json({
-      activeUsers, totalEvents, usuariosNuevosEsteMes, estadoCounts,
-      eventosAprobadosMes, tasaAprobacion, systemStability: 99,
-      eventosPorFacultad, eventosPorDia
+      activeUsers,
+      totalEvents,
+      usuariosNuevosEsteMes,
+      estadoCounts,
+      eventosAprobadosMes,
+      tasaAprobacion,
+      systemStability: 99,
+      eventosPorFacultad: eventosPorFacultad.map(r => ({ 
+        facultad: r.facultad, 
+        total: parseInt(r.total) 
+      })),
+      eventosPorDia: eventosPorDiaCompleto
     });
+
   } catch (error) {
-    console.error('❌ Dashboard Error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Dashboard Error:', error);
+    res.status(500).json({ 
+      error: 'Error al cargar estadísticas',
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
 const getMensualStats = asyncHandler(async (req, res) => {
   try {
     const { sequelize } = getModels();
+    
     const result = await sequelize.query(`
       SELECT 
         TO_CHAR("fechaevento", 'YYYY-MM') AS mes, 
@@ -97,7 +126,8 @@ const getMensualStats = asyncHandler(async (req, res) => {
       FROM "evento"
       WHERE "fechaevento" IS NOT NULL            
       GROUP BY TO_CHAR("fechaevento", 'YYYY-MM') 
-      ORDER BY mes DESC;
+      ORDER BY mes DESC
+      LIMIT 24
     `, { type: sequelize.QueryTypes.SELECT });
 
     const reportes = result.map(row => ({
@@ -111,87 +141,104 @@ const getMensualStats = asyncHandler(async (req, res) => {
 
     res.status(200).json(reportes);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error getMensualStats:', error);
+    res.status(500).json({ 
+      error: 'Error al cargar datos mensuales',
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
 const getHistoricalData = asyncHandler(async (req, res) => {
   try {
-    const { Evento } = getModels();
-    const now = new Date();
+    const { Evento, sequelize } = getModels();
+    
+    const results = await sequelize.query(`
+      SELECT 
+        TO_CHAR("fechaevento", 'YYYY-MM') as mes,
+        EXTRACT(MONTH FROM "fechaevento") as month_num,
+        EXTRACT(YEAR FROM "fechaevento") as year_num,
+        COUNT(*) as eventos
+      FROM "evento"
+      WHERE "fechaevento" >= CURRENT_DATE - INTERVAL '6 months'
+      GROUP BY TO_CHAR("fechaevento", 'YYYY-MM'), 
+               EXTRACT(MONTH FROM "fechaevento"),
+               EXTRACT(YEAR FROM "fechaevento")
+      ORDER BY year_num ASC, month_num ASC
+    `, { type: sequelize.QueryTypes.SELECT });
+
     const historical = [];
-
+    const now = new Date();
+    
     for (let i = 5; i >= 0; i--) {
-      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-      const name = start.toLocaleString('es-ES', { month: 'short' });
-
-      // IMPORTANTE: Cambiado created_at por fechaevento
-      const eventos = await Evento.count({
-        where: { fechaevento: { [Op.gte]: start, [Op.lt]: end } }
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthNum = date.getMonth() + 1;
+      const yearNum = date.getFullYear();
+      const name = date.toLocaleString('es-ES', { month: 'short' });
+      
+      const found = results.find(r => 
+        parseInt(r.month_num) === monthNum && 
+        parseInt(r.year_num) === yearNum
+      );
+      
+      historical.push({ 
+        name, 
+        eventos: found ? parseInt(found.eventos) : 0 
       });
-      historical.push({ name, eventos });
     }
+
     res.status(200).json({ historical });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error getHistoricalData:', error);
+    res.status(500).json({ 
+      error: 'Error al cargar datos históricos',
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
+
 const getMyDashboardStats = asyncHandler(async (req, res) => {
   try {
-     console.log('🔍 req.user completo:', JSON.stringify(req.user, null, 2));
-    
     const models = getModels();
-    const { idusuario, role } = req.user;
+    const { idusuario, role, email } = req.user;
 
     if (!idusuario) {
       return res.status(401).json({ error: 'Usuario no identificado' });
     }
-    console.log('👤 idusuario:', idusuario);
+
     const { Evento, Academico } = models;
 
-        const isAdminOrSistemas = role === 'admin' || email === 'sistemas@gmail.com';
+    const isAdminOrSistemas = role === 'admin' || email === 'sistemas@gmail.com';
     
     if (isAdminOrSistemas) {
-      console.log('👑 Usuario especial - Mostrando TODOS los eventos');
-      
-      const totalEvents = await Evento.count();
-      
-      const eventosPorEstado = await Evento.findAll({
-        attributes: ['estado', 'fechaevento']
-      });
+      const [totalEvents, eventosPorEstado] = await Promise.all([
+        Evento.count(),
+        Evento.findAll({
+          attributes: [
+            'estado',
+            [models.sequelize.fn('COUNT', models.sequelize.col('idevento')), 'total']
+          ],
+          group: ['estado'],
+          raw: true
+        })
+      ]);
 
       const estadoCounts = {};
-      eventosPorEstado.forEach(evento => {
-        const estado = evento.estado || 'sin_estado';
-        estadoCounts[estado] = (estadoCounts[estado] || 0) + 1;
+      eventosPorEstado.forEach(row => {
+        estadoCounts[row.estado || 'sin_estado'] = parseInt(row.total);
       });
 
-      const stats = {
+      return res.status(200).json({
         totalEvents,
         estadoCounts,
         eventosAprobadosMes: estadoCounts.aprobado || 0,
-        tasaAprobacion: totalEvents > 0 ? Math.round(((estadoCounts.aprobado || 0) / totalEvents) * 100) : 0
-      };
-
-      return res.status(200).json(stats);
+        tasaAprobacion: totalEvents > 0 ? Math.round((estadoCounts.aprobado / totalEvents) * 100) : 0
+      });
     }
 
-    // ✅ Académico normal - Ver solo SUS eventos
-    console.log('👤 Académico normal - Buscando perfil académico para idusuario:', idusuario);
+    const academicos = await Academico.findAll({ where: { idusuario } });
     
-
-    const academicos = await Academico.findAll({
-      where: { idusuario }
-    });
-      console.log('🎓 academicos encontrados:', JSON.stringify(academicos, null, 2));
     if (!academicos || academicos.length === 0) {
-      return res.status(403).json({ error: 'No tienes perfil de académico registrado.' });
-    }
-
-     if (!academicos || academicos.length === 0) {
-      console.warn('⚠️ Usuario', idusuario, 'no tiene perfil de académico');
-      // Retornar stats vacíos en lugar de error
       return res.status(200).json({
         totalEvents: 0,
         estadoCounts: {},
@@ -200,52 +247,43 @@ const getMyDashboardStats = asyncHandler(async (req, res) => {
       });
     }
 
-    const idsAcademico = academicos.map(a => a.idacademico || a.idacademico).filter(Boolean);
-     console.log('📋 idsAcademico:', idsAcademico);
+    const idsAcademico = academicos.map(a => a.idacademico).filter(Boolean);
 
-    const totalEvents = await Evento.count({
-      where: { idacademico: idsAcademico }
-    });
-     console.log('📅 totalEvents:', totalEvents);
-    const eventosPorEstado = await Evento.findAll({
-      attributes: ['estado','fechaevento'],
-      where: { idacademico: idsAcademico }
-    });
+    const [totalEvents, eventosPorEstado] = await Promise.all([
+      Evento.count({ where: { idacademico: idsAcademico } }),
+      Evento.findAll({
+        attributes: [
+          'estado',
+          [models.sequelize.fn('COUNT', models.sequelize.col('idevento')), 'total']
+        ],
+        where: { idacademico: idsAcademico },
+        group: ['estado'],
+        raw: true
+      })
+    ]);
 
     const estadoCounts = {};
-    eventosPorEstado.forEach(evento => {
-      const estado = evento.estado || 'sin_estado';
-      estadoCounts[estado] = (estadoCounts[estado] || 0) + 1;
+    eventosPorEstado.forEach(row => {
+      estadoCounts[row.estado || 'sin_estado'] = parseInt(row.total);
     });
-
-    const primerDiaDelMes = new Date();
-    primerDiaDelMes.setDate(1);
-    primerDiaDelMes.setHours(0, 0, 0, 0);
-
-    const eventosAprobadosMes = eventosPorEstado.filter(evento => {
-      const fechaEvento = new Date(evento.fechaevento);
-      return evento.estado === 'aprobado' && fechaEvento >= primerDiaDelMes;
-    }).length;
 
     const eventosAprobados = estadoCounts.aprobado || 0;
     const tasaAprobacion = totalEvents > 0 
       ? Math.round((eventosAprobados / totalEvents) * 100) 
       : 0;
 
-    const stats = {
+    res.status(200).json({
       totalEvents,
       estadoCounts,
-      eventosAprobadosMes,
-      tasaAprobacion,
-    };
-
-    res.status(200).json(stats);
+      eventosAprobadosMes: eventosAprobados,
+      tasaAprobacion
+    });
     
   } catch (error) {
-    console.error('❌ Error en getMyDashboardStats:', error);
+    console.error('Error en getMyDashboardStats:', error);
     res.status(500).json({ 
       error: 'Error al cargar tus estadísticas',
-      message: error.message 
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -253,39 +291,67 @@ const getMyDashboardStats = asyncHandler(async (req, res) => {
 const getMyHistoricalData = asyncHandler(async (req, res) => {
   try {
     const models = getModels();
-    const { Evento, Academico } = models;
+    const { Evento, sequelize, Academico } = models;
     const { idusuario } = req.user;
 
     const academicos = await Academico.findAll({ where: { idusuario } });
-    if (!academicos || academicos.length === 0) return res.status(200).json({ historical: [] });
     
-    const idsAcademico = academicos.map(a => a.idacademico || a.idacademico).filter(Boolean);
-
-    const now = new Date();
-    const historical = [];
-
-    for (let i = 5; i >= 0; i--) {
-      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-      const name = start.toLocaleString('es-ES', { month: 'short' });
-
-      const eventos = await Evento.count({
-        where: {
-          idacademico: idsAcademico,
-          fechaevento: { [Op.gte]: start, [Op.lt]: end } // <--- Cambio a fechaevento
-        }
-      });
-      historical.push({ name, eventos });
+    if (!academicos || academicos.length === 0) {
+      return res.status(200).json({ historical: [] });
     }
+    
+    const idsAcademico = academicos.map(a => a.idacademico).filter(Boolean);
+
+    const results = await sequelize.query(`
+      SELECT 
+        EXTRACT(MONTH FROM "fechaevento") as month_num,
+        EXTRACT(YEAR FROM "fechaevento") as year_num,
+        COUNT(*) as eventos
+      FROM "evento"
+      WHERE idacademico IN (:idsAcademico)
+        AND "fechaevento" >= CURRENT_DATE - INTERVAL '6 months'
+      GROUP BY EXTRACT(MONTH FROM "fechaevento"), EXTRACT(YEAR FROM "fechaevento")
+      ORDER BY year_num ASC, month_num ASC
+    `, { 
+      replacements: { idsAcademico },
+      type: sequelize.QueryTypes.SELECT 
+    });
+
+    const historical = [];
+    const now = new Date();
+    
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthNum = date.getMonth() + 1;
+      const yearNum = date.getFullYear();
+      const name = date.toLocaleString('es-ES', { month: 'short' });
+      
+      const found = results.find(r => 
+        parseInt(r.month_num) === monthNum && 
+        parseInt(r.year_num) === yearNum
+      );
+      
+      historical.push({ 
+        name, 
+        eventos: found ? parseInt(found.eventos) : 0 
+      });
+    }
+
     res.status(200).json({ historical });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error getMyHistoricalData:', error);
+    res.status(500).json({ 
+      error: 'Error al cargar datos históricos',
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
 const getMyCommitteeEvents = asyncHandler(async (req, res) => {
   try {
-    if (!req.user?.idusuario) return res.status(401).json({ error: 'No autorizado' });
+    if (!req.user?.idusuario) {
+      return res.status(401).json({ error: 'No autorizado' });
+    }
 
     const { idusuario } = req.user;
     const { sequelize, Evento } = getModels();
@@ -294,24 +360,24 @@ const getMyCommitteeEvents = asyncHandler(async (req, res) => {
     const fechaLimite = new Date();
     fechaLimite.setDate(fechaLimite.getDate() - DIAS_A_MOSTRAR);
 
-    // En la tabla 'comite', confirmamos que la columna es created_at con guion bajo
     const committeeRecords = await sequelize.query(
       `SELECT idevento, "created_at" FROM public.comite WHERE idusuario = :idusuario`,
       { replacements: { idusuario }, type: sequelize.QueryTypes.SELECT }
     );
 
-    if (committeeRecords.length === 0) return res.status(200).json({ events: [] });
+    if (committeeRecords.length === 0) {
+      return res.status(200).json({ events: [] });
+    }
 
     const eventoIds = committeeRecords.map(record => record.idevento);
 
-    // Ajustamos el findAll para usar fechaevento como filtro
     const events = await Evento.findAll({
       where: { 
         idevento: eventoIds,
-        fechaevento: { [Op.gte]: fechaLimite } // <--- Cambio a fechaevento
+        fechaevento: { [Op.gte]: fechaLimite }
       },
       attributes: ['idevento', 'nombreevento', 'descripcion', 'fechaevento', 'estado'],
-      order: [['fechaevento', 'DESC']] // <--- Ordenar por fechaevento
+      order: [['fechaevento', 'DESC']]
     });
 
     const eventsWithAssignment = events.map(event => {
@@ -325,18 +391,25 @@ const getMyCommitteeEvents = asyncHandler(async (req, res) => {
 
     res.status(200).json({ events: eventsWithAssignment });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error getMyCommitteeEvents:', error);
+    res.status(500).json({ 
+      error: 'Error al cargar eventos del comité',
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
-const myEvent= asyncHandler(async (req, res) => {
+
+const myEvent = asyncHandler(async (req, res) => {
   if (!req.user || !req.user.idusuario) {
-      console.error('Usuario no autenticado o req.user faltante');
-      return res.status(401).json({ 
-        error: 'No autorizado. Por favor inicia sesión nuevamente.',
-        debug: { hasUser: !!req.user, user: req.user }
-      });
-    }
-})
+    console.error('Usuario no autenticado o req.user faltante');
+    return res.status(401).json({ 
+      error: 'No autorizado. Por favor inicia sesión nuevamente.',
+      debug: { hasUser: !!req.user, user: req.user }
+    });
+  }
+  res.status(200).json({ message: 'OK' });
+});
+
 module.exports = {
   getDashboardStats,
   getMensualStats,

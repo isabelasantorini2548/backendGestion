@@ -89,6 +89,7 @@ const startServer = async () => {
     app.use('/recursos',      require('./routes/recursosRoutes.js'));
     app.use('/notificaciones',require('./routes/notificacionesRoutes.js'));
     app.use('/facultades',    require('./routes/facultadRoutes.js'));
+    app.use('/carreras',      require('./routes/carrerasRoutes.js'));
     app.use('/dashboard',     require('./routes/dashboardRoutes.js'));
     app.use('/croquis',       require('./routes/croquisRoutes.js'));
     app.use('/profile',       require('./routes/profileRoutes.js'));

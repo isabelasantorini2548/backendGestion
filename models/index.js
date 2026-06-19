@@ -194,7 +194,7 @@ const getModels = () => {
 };
 
 module.exports = {
-  sequelize: _sequelize,
+  get sequelize() { return _sequelize; },
   initModels,
   getModels
 };

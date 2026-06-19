@@ -103,7 +103,12 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       field: 'idlayout'
     },
-  
+    evento_externo:{
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'evento_externo'
+    }
   }, {
     tableName: 'evento',
     timestamps: false

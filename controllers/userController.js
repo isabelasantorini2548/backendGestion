@@ -160,6 +160,7 @@ const getCarrera= asyncHandler(async (req,res)=>{
   }
 });
 
+
 const getUserProfile = asyncHandler(async (req, res) => {
   try {
     // Usar idusuario que es tu PK real

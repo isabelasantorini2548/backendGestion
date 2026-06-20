@@ -129,7 +129,6 @@ const initModels = async () => {
     'Ingreso.js',
     'Egreso.js',
     'Message.js',
-    'Facultades.js',
     'Carrera.js',
     'ChatMensaje.js'
   ];

@@ -12,8 +12,8 @@ const getFacultades = async (req, res) => {
       attributes: ['facultad_id', 'nombre_facultad']
     });
      const formatted = facultades.map(f => ({
-      idfacultad: f.facultad_id,
-      nombre: f.nombre_facultad
+      facultad_id: f.facultad_id,
+      nombre_facultad: f.nombre_facultad
     }));
 
     res.status(200).json(formatted);

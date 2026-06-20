@@ -41,22 +41,8 @@ const createEvento = async (req, res) => {
 
   try {
     const data = req.body;
-    
-    // 🔍 LOG DETALLADO DE DATOS RECIBIDOS
-    console.log('\n========== DATOS RECIBIDOS ==========');
-    console.log('📌 nombreevento:', data.nombreevento);
-    console.log('📍 lugarevento:', data.lugarevento);
-    console.log('📅 fechaevento:', data.fechaevento);
-    console.log('⏰ horaevento:', data.horaevento);
-    console.log('🎭 tipos_de_evento:', JSON.stringify(data.tipos_de_evento));
-    console.log('🎯 objetivos:', JSON.stringify(data.objetivos));
-    console.log('💬 argumentacion:', data.argumentacion);
-    console.log('👥 segmentos_objetivo:', JSON.stringify(data.segmentos_objetivo));
-    console.log('📊 resultados_esperados:', JSON.stringify(data.resultados_esperados));
-    console.log('👔 comite:', JSON.stringify(data.comite));
-    console.log('💰 presupuesto:', JSON.stringify(data.presupuesto));
-    console.log('========================================\n');
-
+   
+          console.log('🌐 evento_externo:', data.evento_externo);
     if (!data.nombreevento || !data.fechaevento) {
       await t.rollback();
       return res.status(400).json({ message: 'Campos requeridos: nombreevento, fechaevento' });
@@ -71,7 +57,9 @@ const createEvento = async (req, res) => {
       idacademico: req.user.idusuario,
       idclasificacion: data.idclasificacion || null,
       idsubcategoria: data.idsubcategoria || null,
+       evento_externo: data.evento_externo === true || data.evento_externo === 'true',
       estado: 'pendiente',
+      
     }, { transaction: t });
 
     const nuevoEventoId = nuevoEvento.idevento;

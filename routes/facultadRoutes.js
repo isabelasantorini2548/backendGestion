@@ -4,6 +4,6 @@ const { protect } = require('../middleware/authMiddleware.js');
 const { getModels } = require('../models/index.js');
 const router = express.Router();
 
-router.get('/facultades', protect, getFacultades);
+router.get('/', protect, getFacultades);
 
 module.exports = router;

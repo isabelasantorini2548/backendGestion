@@ -1019,6 +1019,7 @@ const getEventos = async (req, res) => {
 
   try {
     const eventos = await Evento.findAll({
+      where: { estado: 'aprobado', idfase: 2 },
       include: [
         {
           model: User,

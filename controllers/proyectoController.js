@@ -1013,18 +1013,26 @@ const rechazarEvento = async (req, res) => {
     return res.status(500).json({ error: 'Error al rechazar el evento' });
   }
 };
-/*const getEventos = asyncHandler(async (req, res) => {
+const getEventos = asyncHandler(async (req, res) => {
   try {
-    const eventos = await fetchEventsWithRawQuery();
-    res.status(200).json(eventos);
-  } catch (error) {
-    console.error('Error al obtener eventos con consulta raw:', error);
-    res.status(500).json({ 
-      message: 'Error al obtener eventos',
-      error: error.message 
+    const eventos = await Evento.findAll({
+      include: [{
+        model: models.Academico,
+        include: [{ model: models.Facultad,
+          attributes: ['idfacultad','nombre_facultad']
+         }]
+      }]
     });
+      const eventosConFacultad = eventos.map(ev => ({
+      ...ev.toJSON(),
+      facultadId: ev.Academico?.Facultad?.idfacultad || null
+    }));
+    
+    res.json(eventosConFacultad);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-});*/
+});
 
 const fetchEventById = async (id) => {
   const models = getModels();
@@ -1955,5 +1963,6 @@ module.exports ={
     getCarreraById,
     getFacultadById,
     diagnosticarModelos,
-    enviarNotificacionTelegram
+    enviarNotificacionTelegram,
+    getEventos
 }

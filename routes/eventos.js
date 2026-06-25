@@ -13,7 +13,8 @@ const  {
   getDashboardStats,
   getHistoricalData,
   getEventosAprobadosPorFacultad,
-  getEventosRechazados
+  getEventosRechazados,
+  getEventos
  
   //getEventosPendientesPorArea
   } = require('../controllers/proyectoController.js');
@@ -44,6 +45,7 @@ router.put('/:id/cancel',rechazarEvento);
 //router.delete('/:id', deleteEvento);
 router.post('/',protect, createEvento);
 router.get('/', getAllEventos);
+router.get('/eventos', getEventos);
 router.get('/:id',protect, getEventoById);
 //router.get('/mios/aprobados',protect, getAprobados);
 

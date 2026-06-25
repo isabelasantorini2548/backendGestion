@@ -44,8 +44,8 @@ router.put('/:id', updateEvento);
 router.put('/:id/cancel',rechazarEvento);
 //router.delete('/:id', deleteEvento);
 router.post('/',protect, createEvento);
+router.get('/con-facultad', getEventos);
 router.get('/', getAllEventos);
-router.get('/eventos', getEventos);
 router.get('/:id',protect, getEventoById);
 //router.get('/mios/aprobados',protect, getAprobados);
 

@@ -1015,21 +1015,38 @@ const rechazarEvento = async (req, res) => {
 };
 const getEventos = asyncHandler(async (req, res) => {
   try {
+    const models = getModels(); 
+    const { Evento,User, Academico, Facultad } = models;
+    
     const eventos = await Evento.findAll({
       include: [{
-        model: models.Academico,
-        include: [{ model: models.Facultad,
-          attributes: ['idfacultad','nombre_facultad']
-         }]
+        model: User,
+        as: 'academicoCreador',
+        attributes: ['idusuario', 'nombre'],
+        include: [{
+          model: Academico,
+          as: 'academico',
+          attributes: ['idacademico', 'facultad_id'],
+          include: [{
+            model: Facultad,
+            as: 'facultad',
+            attributes: ['facultad_id', 'nombre_facultad']
+          }]
+        }]
       }]
     });
-      const eventosConFacultad = eventos.map(ev => ({
-      ...ev.toJSON(),
-      facultadId: ev.Academico?.Facultad?.idfacultad || null
-    }));
+    
+    const eventosConFacultad = eventos.map(ev => {
+      const evData = ev.toJSON();
+      evData.facultadId = ev.academicoCreador?.facultad_id || 
+                          ev.academicoCreador?.facultad?.facultad_id || 
+                          null;
+      return evData;
+    });
     
     res.json(eventosConFacultad);
   } catch (error) {
+    console.error('❌ Error en getEventos:', error);
     res.status(500).json({ error: error.message });
   }
 });

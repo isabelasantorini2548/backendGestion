@@ -1013,43 +1013,55 @@ const rechazarEvento = async (req, res) => {
     return res.status(500).json({ error: 'Error al rechazar el evento' });
   }
 };
-const getEventos = asyncHandler(async (req, res) => {
+const getEventos = async (req, res) => {
+  const models = getModels();
+  const { Evento, User, Academico, Facultad } = models;
+
   try {
-    const models = getModels(); 
-    const { Evento,User, Academico, Facultad } = models;
-    
     const eventos = await Evento.findAll({
-      include: [{
-        model: User,
-        as: 'academicoCreador',
-        attributes: ['idusuario', 'nombre'],
-        include: [{
-          model: Academico,
-          as: 'academico',
-          attributes: ['idacademico', 'facultad_id'],
-          include: [{
-            model: Facultad,
-            as: 'facultad',
-            attributes: ['facultad_id', 'nombre_facultad']
-          }]
-        }]
-      }]
+      include: [
+        {
+          model: User,
+          as: 'academicoCreador',
+          attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat'],
+          required: true,
+          include: [
+            {
+              model: Academico,
+              as: 'academico',
+              attributes: ['idacademico', 'facultad_id'],
+              required: true,
+              include: [
+                {
+                  model: Facultad,
+                  as: 'facultad',
+                  attributes: ['facultad_id', 'nombre_facultad'],
+                  required: true
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      order: [['fechaevento', 'ASC'], ['horaevento', 'ASC']]
     });
-    
-    const eventosConFacultad = eventos.map(ev => {
-      const evData = ev.toJSON();
-      evData.facultadId = ev.academicoCreador?.facultad_id || 
-                          ev.academicoCreador?.facultad?.facultad_id || 
-                          null;
+
+    const baseUrl = `${req.protocol}://${req.get('host')}/uploads/`;
+    const eventosConFacultad = eventos.map(evento => {
+      const evData = evento.get({ plain: true });
+      evData.imagenUrl = evData.imagen ? `${baseUrl}${evData.imagen}` : null;
+      evData.facultadId = evento.academicoCreador?.academico?.facultad_id || null;
+      evData.nombreFacultad = evento.academicoCreador?.academico?.facultad?.nombre_facultad || null;
       return evData;
     });
-    
-    res.json(eventosConFacultad);
+
+    console.log(`✅ ${eventosConFacultad.length} eventos enviados con facultadId`);
+    res.status(200).json(eventosConFacultad);
   } catch (error) {
-    console.error('❌ Error en getEventos:', error);
+    console.error('❌ Error en getAllEventos:', error);
     res.status(500).json({ error: error.message });
   }
-});
+};
 
 const fetchEventById = async (id) => {
   const models = getModels();

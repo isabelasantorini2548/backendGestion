@@ -201,6 +201,7 @@ const createEvento = async (req, res) => {
       }
       console.log('✅ Tipos de evento insertados:', data.tipos_de_evento.length);
     }
+    //////////////////////////////////////////////////
     if(Array.isArray(data.clasificacion_estrategica) && data.clasificacion_estrategica.length > 0) {
       await sequelize.query(
         'INSERT INTO evento_clasificacion (idevento, idclasificacion) VALUES (?, ?)',
@@ -208,35 +209,53 @@ const createEvento = async (req, res) => {
       );
       console.log('✅ Clasificación estratégica vinculada:', data.clasificacion_estrategica[0].nombre_clasificacion);
       }
-    // 4. OBJETIVOS
-    // El frontend envía array mixto: números o { id, texto_personalizado }
-    if (Array.isArray(data.objetivos) && data.objetivos.length > 0) {
-      for (const objetivo of data.objetivos) {
-        const idtipoobjetivo = typeof objetivo === 'number' ? objetivo : objetivo.id;
-        const texto = typeof objetivo === 'object' ? (objetivo.texto_personalizado || null) : null;
+    // 4. OBJETIVOS NORMALES (sin PDI)
+if (Array.isArray(data.objetivos) && data.objetivos.length > 0) {
+  for (const objetivo of data.objetivos) {
+    const idtipoobjetivo = typeof objetivo === 'number' ? objetivo : objetivo.id;
+    const texto = typeof objetivo === 'object' ? (objetivo.texto_personalizado || null) : null;
+    
+    // Solo insertar si NO es PDI (idtipoobjetivo !== 6 o no tiene texto de PDI)
+    if (idtipoobjetivo !== 6 || !texto) {
+      await sequelize.query(
+        'INSERT INTO objetivos (idevento, idtipoobjetivo, texto_personalizado, argumentacion) VALUES (?, ?, ?, ?)',
+        {
+          replacements: [nuevoEventoId, idtipoobjetivo, texto, data.argumentacion || null],
+          transaction: t
+        }
+      );
+    }
+  }
+}
+
+// 5. OBJETIVOS PDI (tabla separada + relación)
+if (Array.isArray(data.objetivos_pdi) && data.objetivos_pdi.length > 0) {
+  for (const descripcion of data.objetivos_pdi) {
+    if (descripcion && descripcion.trim() !== '') {
+      // 1. Insertar en evento_pdi
+      const [pdiResult] = await sequelize.query(
+        'INSERT INTO evento_pdi (idevento, descripcion) VALUES (?, ?) RETURNING idevento_pdi',
+        {
+          replacements: [nuevoEventoId, descripcion.trim()],
+          transaction: t
+        }
+      );
+      
+      const idevento_pdi = pdiResult[0]?.idevento_pdi;
+      
+      // 2. Vincular con objetivos (idtipoobjetivo = 6 para "Otro")
+      if (idevento_pdi) {
         await sequelize.query(
-          'INSERT INTO objetivos (idevento, idtipoobjetivo, texto_personalizado, argumentacion) VALUES (?, ?, ?, ?)',
+          'INSERT INTO objetivos (idevento, idtipoobjetivo, idobjetivo_pdi) VALUES (?, 6, ?)',
           {
-            replacements: [nuevoEventoId, idtipoobjetivo, texto, data.argumentacion || null],
+            replacements: [nuevoEventoId, idevento_pdi],
             transaction: t
           }
         );
       }
-      console.log('✅ Objetivos insertados:', data.objetivos.length);
     }
-
-    // 5. OBJETIVOS PDI
-    if (Array.isArray(data.objetivos_pdi) && data.objetivos_pdi.length > 0) {
-      const descripcionesValidas = data.objetivos_pdi.filter(d => d && d.trim() !== '');
-      for (const descripcion of descripcionesValidas) {
-        await sequelize.query(
-          'INSERT INTO evento_pdi (idevento, descripcion) VALUES (?, ?)',
-          { replacements: [nuevoEventoId, descripcion], transaction: t }
-        );
-      }
-      console.log('✅ Objetivos PDI insertados:', descripcionesValidas.length);
-    }
-
+  }
+}
     // 6. SEGMENTOS OBJETIVO
     if (Array.isArray(data.segmentos_objetivo) && data.segmentos_objetivo.length > 0) {
       for (const segmento of data.segmentos_objetivo) {

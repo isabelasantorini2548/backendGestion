@@ -176,12 +176,12 @@ module.exports = (sequelize, DataTypes) => {
     foreignKey: 'idacademico', 
     as: 'creador' // alias opcional
     });
-    Evento.belongsToMany(models.ProyectoEstrategico, {
-      through: models.EventoProyecto,
-      foreignKey: 'idevento',
-      otherKey: 'idproyecto',
-      as: 'proyectosEstrategicos'
-    });
+  Evento.belongsToMany(models.ProyectoEstrategico, {
+    through: models.ProyectoEvento,  
+    foreignKey: 'idevento',
+    otherKey: 'idproyecto',
+    as: 'proyectosEstrategicos'
+  });
   };
 
   return Evento;

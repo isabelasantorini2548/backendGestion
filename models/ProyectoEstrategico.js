@@ -23,7 +23,7 @@ const ProyectoEstrategico = sequelize.define('ProyectoEstrategico', {
 });
 ProyectoEstrategico.associate = function(models) {
     ProyectoEstrategico.belongsToMany(models.Evento, {
-        through: models.EventoProyecto, 
+        through: models.ProyectoEvento, 
         foreignKey: 'idproyecto',
         otherKey: 'idevento',
         as: 'eventos'

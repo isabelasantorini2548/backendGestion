@@ -105,6 +105,8 @@ const initModels = async () => {
     'Subcategoria.js',
     
     'Fase.js',
+    'ProyectoEvento.js',
+    'ProyectoEstrategico.js',
     'Evento.js',
     'Objetivo.js',
     'Resultado.js',

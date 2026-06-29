@@ -475,24 +475,10 @@ const createEvento = async (req, res) => {
       console.log('✅ Tipos de evento insertados:', data.tipos_de_evento.length);
     }
 
-    // OBJETIVOS NORMALES (idtipoobjetivo 1-5, SIN PDI)
     if (Array.isArray(data.objetivos) && data.objetivos.length > 0) {
-      const objetivosNormales = data.objetivos.filter(obj => {
-        const id = typeof obj === 'number' ? obj : obj.id;
-        return id >= 1 && id <= 5;
-      });
-
-      if (objetivosNormales.length > 0) {
-        const objetivosData = objetivosNormales.map(obj => ({
-          idevento: nuevoEventoId,
-          idtipoobjetivo: typeof obj === 'number' ? obj : obj.id,
-          idargumentacion: null,
-          texto_personalizado: null
-        }));
-
         await sequelize.query(
           `INSERT INTO objetivos (idtipoobjetivo, idargumentacion, texto_personalizado,idobjetivo_pdi) 
-           VALUES ${objetivosData.map(() => '(?, ?, ?)').join(', ')}`,
+           VALUES ${objetivosData.map(() => '(?, ?, ?, ?)').join(', ')}`,
           {
             replacements: objetivosData.flatMap(o => [
               o.idtipoobjetivo,
@@ -505,7 +491,7 @@ const createEvento = async (req, res) => {
         );
         console.log('✅ Objetivos normales insertados:', objetivosNormales.length);
       }
-    }
+    
 
     // OBJETIVOS PDI (tabla separada + relación con objetivos)
     if (Array.isArray(data.objetivos_pdi) && data.objetivos_pdi.length > 0) {
@@ -639,13 +625,16 @@ const createEvento = async (req, res) => {
 
     // COMITÉ
     if (Array.isArray(data.comite) && data.comite.length > 0) {
-      const comiteData = data.comite.map(idusuario => [nuevoEventoId, idusuario]);
+      const comiteData = data.comite.map(idusuario =>({
+        idevento: nuevoEventoId,
+        idusuario: idusuario
+      }));
       
       await sequelize.query(
         `INSERT INTO comite (idevento, idusuario) 
          VALUES ${comiteData.map(() => '(?, ?)').join(', ')}`,
         {
-          replacements: comiteData.flat(),
+          replacements: comiteData.flatMap(obj => [obj.idevento, obj.idusuario]),
           transaction: t
         }
       );

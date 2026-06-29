@@ -131,8 +131,8 @@ const initModels = async () => {
     'Message.js',
     'Carrera.js',
     'ChatMensaje.js',
-    'subcategoria.js',
-    'clasificacion_estrategica.js',
+    'Subcategoria.js',
+    'ClasificacionEstrategica.js',
 
   ];
 

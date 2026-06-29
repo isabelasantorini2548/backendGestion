@@ -474,6 +474,7 @@ const createEvento = async (req, res) => {
       );
       console.log('✅ Tipos de evento insertados:', data.tipos_de_evento.length);
     }
+    const objetivosInsertados = [];
 
 if (Array.isArray(data.objetivos) && data.objetivos.length > 0) {
   const objetivosNormales = data.objetivos.filter(obj => {
@@ -556,6 +557,10 @@ if (Array.isArray(data.objetivos_pdi) && data.objetivos_pdi.length > 0) {
       const idobjetivo = objetivoResult[0]?.idobjetivo;
 
       if (idobjetivo) {
+        objetivosInsertados.push({
+          idobjetivo: idobjetivo,
+          idtipoobjetivo: 6
+        });
         await sequelize.query(
           `INSERT INTO evento_objetivos (idevento, idtipoobjetivo, texto_personalizado, idobjetivo) 
            VALUES (?, ?, ?, ?)`,

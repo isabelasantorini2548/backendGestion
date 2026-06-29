@@ -475,64 +475,130 @@ const createEvento = async (req, res) => {
       console.log('✅ Tipos de evento insertados:', data.tipos_de_evento.length);
     }
 
-    if (Array.isArray(data.objetivos) && data.objetivos.length > 0) {
-        await sequelize.query(
-          `INSERT INTO objetivos (idtipoobjetivo, idargumentacion, texto_personalizado,idobjetivo_pdi) 
-           VALUES ${objetivosData.map(() => '(?, ?, ?, ?)').join(', ')}`,
-          {
-            replacements: objetivosData.flatMap(o => [
-              o.idtipoobjetivo,
-              o.idargumentacion,
-              o.texto_personalizado,
-              o.idobjetivo_pdi
-            ]),
-            transaction: t
-          }
-        );
-        console.log('✅ Objetivos normales insertados:', objetivosNormales.length);
-      }
-    
+if (Array.isArray(data.objetivos) && data.objetivos.length > 0) {
+  const objetivosNormales = data.objetivos.filter(obj => {
+    const id = typeof obj === 'number' ? obj : obj.id;
+    return id >= 1 && id <= 5;
+  });
 
-    // OBJETIVOS PDI (tabla separada + relación con objetivos)
-    if (Array.isArray(data.objetivos_pdi) && data.objetivos_pdi.length > 0) {
-      const pdiValidos = data.objetivos_pdi.filter(desc => desc && desc.trim() !== '');
-      
-      for (const descripcion of pdiValidos) {
-        // Paso 1: Insertar en evento_pdi
-        const [pdiResult] = await sequelize.query(
-          `INSERT INTO evento_pdi (idevento, descripcion) 
-           VALUES (?, ?) 
-           RETURNING idevento_pdi`,
-          {
-            replacements: [nuevoEventoId, descripcion.trim()],
-            transaction: t
-          }
-        );
-        
-        const idevento_pdi = pdiResult[0]?.idevento_pdi;
-        
-        
-      }
-      console.log('✅ Objetivos PDI insertados:', pdiValidos.length);
-    }
-
-    // SEGMENTOS OBJETIVO
-    if (Array.isArray(data.segmentos_objetivo) && data.segmentos_objetivo.length > 0) {
-      const segmentosData = data.segmentos_objetivo.map(seg => [
-        nuevoEventoId,
-        seg.id,
-        seg.texto_personalizado || null
-      ]);
-
-      await sequelize.query(
-        `INSERT INTO evento_segmento (idevento, idsegmento, texto_personalizado) 
-         VALUES ${segmentosData.map(() => '(?, ?, ?)').join(', ')}`,
+  if (objetivosNormales.length > 0) {
+    for (const obj of objetivosNormales) {
+      const [objetivoResult] = await sequelize.query(
+        `INSERT INTO objetivos (idtipoobjetivo, idargumentacion, texto_personalizado, idobjetivo_pdi) 
+         VALUES (?, ?, ?, ?) 
+         RETURNING idobjetivo`,
         {
-          replacements: segmentosData.flat(),
+          replacements: [
+            typeof obj === 'number' ? obj : obj.id, 
+            null,                                   
+            null,                                   
+            null                                    
+          ],
           transaction: t
         }
       );
-      console.log('✅ Segmentos insertados:', data.segmentos_objetivo.length);
+
+      const idobjetivo = objetivoResult[0]?.idobjetivo;
+
+      if (idobjetivo) {
+        await sequelize.query(
+          `INSERT INTO evento_objetivos (idevento, idtipoobjetivo, texto_personalizado, idobjetivo) 
+           VALUES (?, ?, ?, ?)`,
+          {
+            replacements: [
+              nuevoEventoId,
+              typeof obj === 'number' ? obj : obj.id,
+              null,
+              idobjetivo
+            ],
+            transaction: t
+          }
+        );
+      }
+    }
+    console.log('✅ Objetivos normales insertados:', objetivosNormales.length);
+  }
+} 
+    
+
+   //  PDI
+if (Array.isArray(data.objetivos_pdi) && data.objetivos_pdi.length > 0) {
+  const pdiValidos = data.objetivos_pdi.filter(desc => desc && desc.trim() !== '');
+  
+  for (const descripcion of pdiValidos) {
+    const [pdiResult] = await sequelize.query(
+      `INSERT INTO evento_pdi (idevento, descripcion) 
+       VALUES (?, ?) 
+       RETURNING idevento_pdi`,
+      {
+        replacements: [nuevoEventoId, descripcion.trim()],
+        transaction: t
+      }
+    );
+    
+    const idevento_pdi = pdiResult[0]?.idevento_pdi;
+    
+    if (idevento_pdi) {
+      const [objetivoResult] = await sequelize.query(
+        `INSERT INTO objetivos (idtipoobjetivo, idargumentacion, texto_personalizado, idobjetivo_pdi) 
+         VALUES (?, NULL, ?, ?) 
+         RETURNING idobjetivo`,
+        {
+          replacements: [
+            6, 
+            `PDI: ${descripcion.trim()}`,
+            idevento_pdi
+          ],
+          transaction: t
+        }
+      );
+
+      const idobjetivo = objetivoResult[0]?.idobjetivo;
+
+      if (idobjetivo) {
+        await sequelize.query(
+          `INSERT INTO evento_objetivos (idevento, idtipoobjetivo, texto_personalizado, idobjetivo) 
+           VALUES (?, ?, ?, ?)`,
+          {
+            replacements: [
+              nuevoEventoId,
+              6,
+              `PDI: ${descripcion.trim()}`,
+              idobjetivo
+            ],
+            transaction: t
+          }
+        );
+      }
+    }
+  }
+  console.log('✅ Objetivos PDI insertados:', pdiValidos.length);
+}
+
+    if (Array.isArray(data.segmentos_objetivo) && data.segmentos_objetivo.length > 0 && objetivosInsertados.length > 0) {
+  const segmentoData = [];
+  
+  for (const objetivo of objetivosInsertados) {
+    for (const segmento of data.segmentos_objetivo) {
+      segmentoData.push([
+        objetivo.idobjetivo,
+        segmento.id,
+        segmento.texto_personalizado || null
+      ]);
+    }
+  }
+
+  if (segmentoData.length > 0) {
+    await sequelize.query(
+      `INSERT INTO objetivo_segmento (idobjetivo, idsegmento, texto_personalizado) 
+       VALUES ${segmentoData.map(() => '(?, ?, ?)').join(', ')}`,
+      {
+        replacements: segmentoData.flat(),
+        transaction: t
+      }
+    );
+    console.log('✅ Segmentos vinculados a objetivos:', segmentoData.length, 'relaciones');
+  }
     }
 
     // RESULTADOS ESPERADOS
@@ -624,22 +690,25 @@ const createEvento = async (req, res) => {
     }
 
     // COMITÉ
-    if (Array.isArray(data.comite) && data.comite.length > 0) {
-      const comiteData = data.comite.map(idusuario =>({
-        idevento: nuevoEventoId,
-        idusuario: idusuario
-      }));
-      
-      await sequelize.query(
-        `INSERT INTO comite (idevento, idusuario) 
-         VALUES ${comiteData.map(() => '(?, ?)').join(', ')}`,
-        {
-          replacements: comiteData.flatMap(obj => [obj.idevento, obj.idusuario]),
-          transaction: t
-        }
-      );
-      console.log('✅ Comité insertado:', data.comite.length, 'miembros');
-    }
+      if (Array.isArray(data.comite) && data.comite.length > 0) {
+        const comiteData = data.comite.map((idusuario, index) => [
+          nuevoEventoId,
+          index + 1,                    
+          new Date(),                   
+          index === 0 ? true : false,   
+          idusuario
+        ]);
+        
+        await sequelize.query(
+          `INSERT INTO comite (idevento, idcomite, created_at, es_creador, idusuario) 
+          VALUES ${comiteData.map(() => '(?, ?, ?, ?, ?)').join(', ')}`,
+          {
+            replacements: comiteData.flat(),
+            transaction: t
+          }
+        );
+        console.log('✅ Comité insertado:', data.comite.length, 'miembros');
+      }
 
     await t.commit();
     console.log('✅ Transacción completada exitosamente');

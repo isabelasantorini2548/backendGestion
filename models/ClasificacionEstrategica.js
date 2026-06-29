@@ -3,7 +3,7 @@ const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize,DataTypes) => {
 const Clasificacion = sequelize.define('ClasificacionEstrategica', {
-  idClasificacion: {
+  idclasificacion: {
     type: DataTypes.INTEGER,
     primaryKey: true,
     autoIncrement: true,
@@ -13,15 +13,16 @@ const Clasificacion = sequelize.define('ClasificacionEstrategica', {
     type: DataTypes.STRING(100),
     allowNull: false
   },
-  idsubcategoria: {
-    type: DataTypes.INTEGER,
-    allowNull: false
-  }
+ 
 }, {
   tableName: 'clasificacion_estrategica',
   timestamps: false 
 });
-  Clasificacion.associate = (models) => {
+  Clasificacion.associate = function(models) {
+    Clasificacion.hasMany(models.Subcategoria, {
+      foreignKey: 'idclasificacion',
+      as: 'subcategorias'
+    });
 
   }
 return Clasificacion;

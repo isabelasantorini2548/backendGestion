@@ -130,7 +130,9 @@ const initModels = async () => {
     'Egreso.js',
     'Message.js',
     'Carrera.js',
-    'ChatMensaje.js'
+    'ChatMensaje.js',
+    'subcategoria.js'
+    
   ];
 
 const loadModel = (filename) => {

@@ -1,4 +1,5 @@
 const { DataTypes } = require('sequelize');
+
 module.exports = (sequelize,DataTypes) => {
 const Subcategoria = sequelize.define('Subcategoria', {
   idsubcategoria: {
@@ -23,14 +24,16 @@ const Subcategoria = sequelize.define('Subcategoria', {
 });
 Subcategoria.associate = function(models) {
   Subcategoria.hasMany(models.Evento,
-     { foreignKey: 'idsubcategoria' });
-  };
-  
-  Subcategoria.belongsTo(models.ClasificacionEstrategica, {
-    foreignKey: 'idclasificacion',
-    targetKey: 'idclasificacion',
-    as: 'clasificacion'
-  });
+     { foreignKey: 'idsubcategoria',
+      targetKey: 'idsubcategoria',
+      });
+      
+      Subcategoria.belongsTo(models.ClasificacionEstrategica, {
+        foreignKey: 'idclasificacion',
+        targetKey: 'idclasificacion',
+        as: 'clasificacion'
+      });
+    };
 
 return Subcategoria;
 };

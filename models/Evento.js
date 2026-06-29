@@ -120,6 +120,11 @@ module.exports = (sequelize, DataTypes) => {
       targetKey: 'idclasificacion',
       as: 'clasificacion'
     });
+    Evento.belongsTo(models.Subcategoria, {
+      foreignKey: 'idsubcategoria',
+      targetKey: 'idsubcategoria',
+      as: 'subcategoria'
+    });
     Evento.belongsTo(models.User, {
       foreignKey: 'idacademico',
       as: 'academicoCreador'
@@ -170,11 +175,6 @@ module.exports = (sequelize, DataTypes) => {
     Evento.belongsTo(models.Academico, { 
     foreignKey: 'idacademico', 
     as: 'creador' // alias opcional
-    });
-    Evento.belongsTo(models.Subcategoria, {
-      foreignKey: 'idsubcategoria',
-      targetKey: 'idsubcategoria',
-      as: 'subcategoria'
     });
     Evento.belongsToMany(models.ProyectoEstrategico, {
       through: models.EventoProyecto,

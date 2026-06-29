@@ -4,7 +4,8 @@ const Subcategoria = sequelize.define('Subcategoria', {
   idsubcategoria: {
     type: DataTypes.INTEGER,
     primaryKey: true,
-    autoIncrement: true
+    autoIncrement: true,
+    field: 'idsubcategoria'
   },
   nombreSubcategoria: {
     type: DataTypes.STRING(100),
@@ -13,10 +14,7 @@ const Subcategoria = sequelize.define('Subcategoria', {
   idclasificacion: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: {
-      model: 'clasificacion_estrategica',
-      key: 'idclasificacion'
-    }
+    field: 'idclasificacion'
   }
   
 }, {

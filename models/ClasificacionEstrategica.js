@@ -9,7 +9,7 @@ const Clasificacion = sequelize.define('ClasificacionEstrategica', {
     autoIncrement: true,
     field: 'idclasificacion'
   },
-  nombre_clasificacion: {
+  nombreClasificacion: {
     type: DataTypes.STRING(100),
     allowNull: false
   },

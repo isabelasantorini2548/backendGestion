@@ -30,6 +30,7 @@ Subcategoria.associate = function(models) {
   
   Subcategoria.belongsTo(models.ClasificacionEstrategica, {
     foreignKey: 'idclasificacion',
+    targetKey: 'idclasificacion',
     as: 'clasificacion'
   });
 

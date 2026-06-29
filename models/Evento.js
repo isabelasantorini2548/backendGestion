@@ -117,7 +117,7 @@ module.exports = (sequelize, DataTypes) => {
   Evento.associate = function(models) {
     Evento.belongsTo(models.ClasificacionEstrategica, {
       foreignKey: 'idclasificacion',
-      targetKey: 'idClasificacion',
+      targetKey: 'idclasificacion',
       as: 'clasificacion'
     });
     Evento.belongsTo(models.User, {
@@ -173,6 +173,7 @@ module.exports = (sequelize, DataTypes) => {
     });
     Evento.belongsTo(models.Subcategoria, {
       foreignKey: 'idsubcategoria',
+      targetKey: 'idsubcategoria',
       as: 'subcategoria'
     });
     Evento.belongsToMany(models.ProyectoEstrategico, {

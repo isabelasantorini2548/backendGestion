@@ -147,30 +147,25 @@ const botStatus = (req, res) => {
 
 const telegramWebhook = async (req, res) => {
   console.log('📩 [TELEGRAM] Webhook recibido');
-  console.log('📩 Body:', JSON.stringify(req.body, null, 2));
   
   const { message } = req.body;
   if (!message?.text) return res.sendStatus(200);
   
   const chatId = message.chat.id;
   const text = message.text.trim();
-  const senderInfo = message.from?.username ? `@${message.from.username}` : (message.from?.first_name || 'Usuario');
 
   try {
-    // Verificar si es un email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const esEmail = emailRegex.test(text);
 
+    // 📧 VINCULACIÓN POR EMAIL
     if (esEmail) {
-      console.log('📧 Intentando vincular email:', text);
       const models = getModels();
       const { User } = models;
 
       const usuario = await User.findOne({ 
         where: { email: text.toLowerCase() } 
       });
-
-      console.log('🔍 Usuario encontrado:', usuario ? 'SÍ' : 'NO');
 
       if (!usuario) {
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -180,16 +175,14 @@ const telegramWebhook = async (req, res) => {
         return res.status(200).send('OK');
       }
 
-      // Verificar si ya está vinculado a otro chat
       if (usuario.telegram_chat_id && usuario.telegram_chat_id !== chatId.toString()) {
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
-          text: `⚠️ Este email ya está vinculado con otra cuenta de Telegram.\n\nSi necesitas ayuda, contacta al administrador.`,
+          text: '⚠️ Este email ya está vinculado con otra cuenta de Telegram.',
         });
         return res.status(200).send('OK');
       }
 
-      // Vincular
       await User.update(
         { 
           telegram_chat_id: chatId.toString(),
@@ -198,48 +191,45 @@ const telegramWebhook = async (req, res) => {
         { where: { email: text.toLowerCase() } }
       );
 
-      console.log('✅ Cuenta vinculada:', text);
+      // ✅ Usar HTML en lugar de Markdown
+      const successMessage = 
+`✅ <b>¡Cuenta vinculada exitosamente!</b>
 
-      const successMessage = `
-✅ *¡Cuenta vinculada exitosamente!*
-
-Hola ${usuario.nombre} ${usuario.apellidopat || ''}, ahora recibirás notificaciones sobre:
+Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás notificaciones sobre:
 
 • ✅ Aprobación de eventos
 • ❌ Rechazo de eventos (con motivo)
 • ⏰ Recordatorios 3 días antes de tu evento
 
-¡Mantente informado! 🎉
-      `;
+¡Mantente informado! 🎉`;
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
         chat_id: chatId,
         text: successMessage,
-        parse_mode: 'Markdown'
+        parse_mode: 'HTML'  // ← CAMBIAR A HTML
       });
 
       return res.status(200).send('OK');
     }
 
-    // Comandos disponibles
+    // 📋 COMANDOS
     if (text === '/start') {
-      const welcomeMessage = `
-🤖 *¡Bienvenido al Bot de Eventos UNIFRANZ!*
+      const welcomeMessage = 
+`🤖 <b>¡Bienvenido al Bot de Eventos UNIFRANZ!</b>
 
 Para vincular tu cuenta y recibir notificaciones, envía tu email institucional:
 
-Ejemplo: \`juan.perez@unifranz.edu.bo\`
+Ejemplo: <code>juan.perez@unifranz.edu.bo</code>
 
 Una vez vinculado, podrás usar:
 • /mis_eventos - Ver tus eventos aprobados
 • /estado - Verificar si tu cuenta está vinculada
-• /ayuda - Mostrar ayuda
-      `;
+• /ayuda - Mostrar ayuda`;
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
         chat_id: chatId,
         text: welcomeMessage,
-        parse_mode: 'Markdown'
+        parse_mode: 'HTML'
       });
 
       return res.status(200).send('OK');
@@ -261,7 +251,8 @@ Una vez vinculado, podrás usar:
       } else {
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
-          text: `✅ Tu cuenta está vinculada como:\n\n👤 ${usuario.nombre} ${usuario.apellidopat || ''}\n📧 ${usuario.email}\n\nRecibirás notificaciones automáticas.`,
+          text: `✅ Tu cuenta está vinculada como:\n\n👤 <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>\n📧 ${usuario.email}\n\nRecibirás notificaciones automáticas.`,
+          parse_mode: 'HTML'
         });
       }
 
@@ -296,15 +287,15 @@ Una vez vinculado, podrás usar:
       if (eventos.length === 0) {
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
-          text: '📭 No tienes eventos aprobados próximos.',
+          text: ' No tienes eventos aprobados próximos.',
         });
         return res.status(200).send('OK');
       }
 
-      let message = '📅 *Tus próximos eventos:*\n\n';
+      let message = ' <b>Tus próximos eventos:</b>\n\n';
       eventos.forEach((evento, index) => {
         const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
-        message += `${index + 1}. *${evento.nombreevento}*\n`;
+        message += `<b>${index + 1}. ${evento.nombreevento}</b>\n`;
         message += `   🗓️ ${fecha}\n`;
         message += `   📍 ${evento.lugarevento}\n\n`;
       });
@@ -312,34 +303,33 @@ Una vez vinculado, podrás usar:
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
         chat_id: chatId,
         text: message,
-        parse_mode: 'Markdown'
+        parse_mode: 'HTML'
       });
 
       return res.status(200).send('OK');
     }
 
     if (text === '/ayuda') {
-      const helpMessage = `
-📚 *Comandos disponibles:*
+      const helpMessage = 
+`📚 <b>Comandos disponibles:</b>
 
 /start - Bienvenida e instrucciones
 /mis_eventos - Ver tus eventos aprobados
 /estado - Verificar vinculación
 /ayuda - Mostrar esta ayuda
 
-📧 Para vincular tu cuenta, simplemente envía tu email institucional.
-      `;
+📧 Para vincular tu cuenta, simplemente envía tu email institucional.`;
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
         chat_id: chatId,
         text: helpMessage,
-        parse_mode: 'Markdown'
+        parse_mode: 'HTML'
       });
 
       return res.status(200).send('OK');
     }
 
-    // Si no es un comando reconocido
+    // Comando no reconocido
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: chatId,
       text: '❌ Comando no reconocido.\n\nUsa /ayuda para ver los comandos disponibles.',
@@ -347,16 +337,17 @@ Una vez vinculado, podrás usar:
 
   } catch (error) { 
     console.error('❌ [TELEGRAM] Error:', error.message);
-    console.error('❌ Stack:', error.stack);
+    console.error('❌ Response data:', error.response?.data);
     
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: chatId,
-      text: `❌ Error: ${error.message}\n\nIntenta nuevamente o contacta al administrador.`,
-    });
+      text: `❌ Ocurrió un error. Intenta nuevamente.`,
+    }).catch(e => console.error('Error enviando mensaje de error:', e.message));
   }
   
   res.status(200).send('OK');
 };
+
 
 const whatsappWebhook = async (req, res) => {
   res.status(200).json({ received: true });

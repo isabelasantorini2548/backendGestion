@@ -18,7 +18,7 @@ const  {
  
   //getEventosPendientesPorArea
   } = require('../controllers/proyectoController.js');
-const {enviarNotificacionTelegram} = require('botController.js');
+const {enviarNotificacionTelegram} = require('../controllers/botController.js');
   const  {protect,authorize} = require('../middleware/authMiddleware.js');
 const router = express.Router();
 

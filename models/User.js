@@ -91,7 +91,17 @@ module.exports = (sequelize,DataTypes) => {
         key: 'facultad_id'
       },
       field: 'facultad_id'
-    }
+    },
+    telegram_chat_id: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: null
+  },
+  telegram_username: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: null
+  }
   },
   {
     tableName: 'usuario',

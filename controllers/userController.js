@@ -187,7 +187,9 @@ const getUserProfile = asyncHandler(async (req, res) => {
       email: user.email,
       role: user.role,
       facultad: user.facultad?.nombre_facultad || 'Sin facultad',
-      facultad_id: user.facultad_id
+      facultad_id: user.facultad_id,
+      telegram_chat_id: user.telegram_chat_id,
+      telegram_username: user.telegram_username
     });
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener perfil', error: error.message });
@@ -629,7 +631,9 @@ const linkTelegramAccount = asyncHandler(async (req, res) => {
 
   try {
     const user = await User.findByPk(userId,{
-      attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat', 'email', 'role', 'facultad_id'],
+      attributes: [
+        'idusuario', 'nombre', 'apellidopat',
+        'apellidomat', 'email', 'role', 'facultad_id', 'telegram_chat_id', 'telegram_username'],
       include: [
         {
           model: Facultad,
@@ -651,7 +655,9 @@ const linkTelegramAccount = asyncHandler(async (req, res) => {
       email: user.email,
       role: user.role,
       facultad: user.facultad?.nombre_facultad || 'Sin facultad',
-      facultad_id: user.facultad_id
+      facultad_id: user.facultad_id,
+      telegram_chat_id: user.telegram_chat_id,
+      telegram_username: user.telegram_username
     });
 
   } catch (error) {

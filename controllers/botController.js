@@ -5,7 +5,6 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const TELEGRAM_API = `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}`;
 
-// 🔹 Función segura con timeout y formato correcto para Gemini
 async function askGemini(userMessage, senderInfo = 'Invitado', eventosContexto = "", history = []) {
   const SYSTEM_PROMPT = `Eres el asistente virtual de gestión de eventos de la UNIFRANZ.
 📌 REGLAS:
@@ -69,12 +68,10 @@ ${eventosContexto || "Sin eventos activos en este momento."}`;
   return "⚠️ Servicio temporalmente ocupado. Intenta en unos segundos.";
 }
 
-// 🔹 Helpers
 function getMessage() {
   try { return getModels()?.Message || null; } catch { return null; }
 }
 
-// 🔹 Endpoint principal para chat desde app (Escenario 2)
 const appChat = async (req, res) => {
   try {
     const models = getModels();
@@ -137,7 +134,6 @@ const appChat = async (req, res) => {
   }
 };
 
-// 🔹 Resto de handlers (se mantienen igual)
 const getMessages = async (req, res) => {
   try {
     const { platform, externalId } = req.params;
@@ -152,14 +148,187 @@ const botStatus = (req, res) => {
 const telegramWebhook = async (req, res) => {
   const { message } = req.body;
   if (!message?.text) return res.sendStatus(200);
+  
   const chatId = message.chat.id;
+  const text = message.text.trim();
   const senderInfo = message.from?.username ? `@${message.from.username}` : (message.from?.first_name || 'Estudiante');
+
   try {
-    const aiResponse = await askGemini(message.text, senderInfo);
+    // 🔹 VERIFICAR SI ES UN EMAIL PARA VINCULAR
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const esEmail = emailRegex.test(text);
+
+    if (esEmail) {
+      const models = getModels();
+      const { User } = models;
+
+      // Buscar usuario por email
+      const usuario = await User.findOne({ 
+        where: { email: text.toLowerCase() } 
+      });
+
+      if (!usuario) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: '❌ Email no encontrado en el sistema.\n\nVerifica que sea tu email institucional registrado.',
+        });
+        return res.status(200).send('OK');
+      }
+
+      // Verificar si ya está vinculado
+      if (usuario.telegram_chat_id && usuario.telegram_chat_id !== chatId.toString()) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `⚠️ Este email ya está vinculado con otra cuenta de Telegram.\n\nSi necesitas ayuda, contacta al administrador.`,
+        });
+        return res.status(200).send('OK');
+      }
+
+      // Vincular el chat_id con el usuario
+      await User.update(
+        { 
+          telegram_chat_id: chatId.toString(),
+          telegram_username: message.from.username || message.from.first_name
+        },
+        { where: { email: text.toLowerCase() } }
+      );
+
+      const successMessage = `
+✅ *¡Cuenta vinculada exitosamente!*
+
+Hola ${usuario.nombre} ${usuario.apellidopat || ''}, ahora recibirás notificaciones sobre:
+
+• ✅ Aprobación de eventos
+• ❌ Rechazo de eventos (con motivo)
+• ⏰ Recordatorios 3 días antes de tu evento
+
+¡Mantente informado! 🎉
+
+Puedes preguntarme sobre eventos usando lenguaje natural.
+      `;
+
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: successMessage,
+        parse_mode: 'Markdown'
+      });
+
+      return res.status(200).send('OK');
+    }
+
+    // 🔹 COMANDOS ESPECIALES
+    if (text === '/start') {
+      const welcomeMessage = `
+🤖 *¡Bienvenido al Bot de Eventos UNIFRANZ!*
+
+Para vincular tu cuenta y recibir notificaciones, envía tu email institucional:
+
+Ejemplo: \`juan.perez@unifranz.edu.bo\`
+
+Una vez vinculado, podrás preguntarme sobre:
+• Tus eventos aprobados
+• Estado de eventos pendientes
+• Recordatorios automáticos
+      `;
+
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: welcomeMessage,
+        parse_mode: 'Markdown'
+      });
+
+      return res.status(200).send('OK');
+    }
+
+    if (text === '/estado') {
+      const models = getModels();
+      const { User } = models;
+
+      const usuario = await User.findOne({ 
+        where: { telegram_chat_id: chatId.toString() } 
+      });
+
+      if (!usuario) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: '❌ Tu cuenta no está vinculada.\n\nEnvía tu email institucional para vincularla.',
+        });
+      } else {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `✅ Tu cuenta está vinculada como:\n\n👤 ${usuario.nombre} ${usuario.apellidopat || ''}\n📧 ${usuario.email}\n\nRecibirás notificaciones automáticas.`,
+        });
+      }
+
+      return res.status(200).send('OK');
+    }
+
+    if (text === '/mis_eventos') {
+      const models = getModels();
+      const { User, Evento } = models;
+
+      const usuario = await User.findOne({ 
+        where: { telegram_chat_id: chatId.toString() } 
+      });
+
+      if (!usuario) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: '❌ Tu cuenta no está vinculada.\n\nEnvía tu email institucional para vincularla.',
+        });
+        return res.status(200).send('OK');
+      }
+
+      const eventos = await Evento.findAll({
+        where: { 
+          idacademico: usuario.idusuario,
+          estado: 'aprobado'
+        },
+        order: [['fechaevento', 'ASC']],
+        limit: 5
+      });
+
+      if (eventos.length === 0) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: '📭 No tienes eventos aprobados próximos.',
+        });
+        return res.status(200).send('OK');
+      }
+
+      let message = '📅 *Tus próximos eventos:*\n\n';
+      eventos.forEach((evento, index) => {
+        const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
+        message += `${index + 1}. *${evento.nombreevento}*\n`;
+        message += `   🗓️ ${fecha}\n`;
+        message += `   📍 ${evento.lugarevento}\n\n`;
+      });
+
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'Markdown'
+      });
+
+      return res.status(200).send('OK');
+    }
+
+    // 🔹 SI NO ES EMAIL NI COMANDO, USAR GEMINI
+    const aiResponse = await askGemini(text, senderInfo);
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: chatId, text: aiResponse, parse_mode: 'Markdown'
+      chat_id: chatId, 
+      text: aiResponse, 
+      parse_mode: 'Markdown'
     });
-  } catch (error) { console.error('❌ telegramWebhook error:', error.message); }
+
+  } catch (error) { 
+    console.error('❌ telegramWebhook error:', error.message);
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: chatId,
+      text: '⚠️ Ocurrió un error. Intenta nuevamente.',
+    });
+  }
+  
   res.status(200).send('OK');
 };
 
@@ -193,12 +362,94 @@ const getChatHistory = async (req, res) => {
     res.status(500).json({ error: 'Error al cargar el historial' });
   }
 };
+const enviarNotificacionTelegram = async (evento, tipo) => {
+  try {
+    const models = getModels();
+    const { Evento, User } = models;
+
+    // Obtener el evento completo con el creador
+    const eventoCompleto = await Evento.findByPk(evento.idevento || evento.id, {
+      include: [
+        {
+          model: User,
+          as: 'academicoCreador',
+          attributes: ['idusuario', 'telegram_chat_id']
+        }
+      ]
+    });
+
+    if (!eventoCompleto) {
+      console.log('⚠️ Evento no encontrado para notificar');
+      return;
+    }
+
+    const idAcademico = eventoCompleto.idacademico || eventoCompleto.academicoCreador?.idusuario;
+    
+    if (!idAcademico) {
+      console.log('⚠️ No se encontró idacademico');
+      return;
+    }
+
+    // Buscar el usuario creador para obtener su telegram_chat_id
+    const usuarioCreador = await User.findByPk(idAcademico);
+
+    if (!usuarioCreador || !usuarioCreador.telegram_chat_id) {
+      console.log(`⚠️ Usuario ${idAcademico} no tiene telegram_chat_id`);
+      return;
+    }
+
+    const chatId = usuarioCreador.telegram_chat_id;
+    const fechaEvento = new Date(evento.fechaevento).toLocaleDateString('es-ES');
+    
+    let mensaje = '';
+    
+    if (tipo === 'aprobado') {
+      mensaje = `
+✅ *¡Evento Aprobado!*
+
+📅 *${evento.nombreevento}*
+
+🗓️ Fecha: ${fechaEvento}
+${evento.horaevento ? `🕐 Hora: ${evento.horaevento}` : ''}
+📍 Lugar: ${evento.lugarevento}
+👤 Responsable: ${evento.responsable_evento}
+
+¡Tu evento ha sido aprobado exitosamente!
+      `;
+    } else if (tipo === 'rechazado') {
+      mensaje = `
+❌ *Evento Rechazado*
+
+📅 *${evento.nombreevento}*
+
+🗓️ Fecha: ${fechaEvento}
+📍 Lugar: ${evento.lugarevento}
+👤 Responsable: ${evento.responsable_evento}
+
+${evento.razon_rechazo ? `💬 *Motivo:* ${evento.razon_rechazo}` : ''}
+
+Tu evento ha sido rechazado.
+      `;
+    }
+
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: chatId,
+      text: mensaje,
+      parse_mode: 'Markdown'
+    });
+
+    console.log(`✅ Notificación Telegram enviada a ${chatId}`);
+  } catch (error) {
+    console.error('❌ Error al enviar notificación Telegram:', error.message);
+  }
+};
 
 module.exports = {
   getMessages,
   telegramWebhook,
   whatsappWebhook,
   botStatus,
+  enviarNotificacionTelegram,
   appChat,
   getChatHistory,
 };

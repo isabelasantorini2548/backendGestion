@@ -592,46 +592,24 @@ const getComiteUser = asyncHandler(async (req, res) => {
 });
 
 const linkTelegramAccount = asyncHandler(async (req, res) => {
-   const models = getModels();
-  const {User} = models;
-  
-  const { email, chat_id } = req.body;
+    try {
+    const userId = req.user.idusuario;
+    const models = getModels();
+    const { User } = models;
 
-  // 1. Validar la entrada
-  if (!email || !chat_id) {
-    res.status(400);
-    throw new Error('Faltan el email o el chat_id.');
+    await User.update(
+      { 
+        telegram_chat_id: null,
+        telegram_username: null 
+      },
+      { where: { idusuario: userId } }
+    );
+
+    res.json({ message: 'Telegram desvinculado correctamente' });
+  } catch (error) {
+    console.error('Error al desvincular Telegram:', error);
+    res.status(500).json({ error: error.message });
   }
-
-  const user = await User.findOne({ where: { email } });
-
-  const token = jwt.sign(
-    { id: user.id }, // ✅ Usa "id", no "idusuario"
-    process.env.JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-  if (!user) {
-    res.status(404);
-    throw new Error('No se encontró ningún usuario con ese email. Por favor, verifica que lo hayas escrito correctamente.');
-  }
-
-  if (user.telegram_chat_id) {
-    if (user.telegram_chat_id == chat_id) {
-      return res.status(200).json({ message: 'Esta cuenta ya estaba vinculada correctamente.' });
-    } else {
-      res.status(409); 
-      throw new Error('Este email ya está vinculado a otra cuenta de Telegram.');
-    }
-  }
-  
-  // 4. Si el usuario existe, actualizar su registro con el chat_id
-  user.telegram_chat_id = chat_id;
-  await user.save(); // Guardar los cambios en la base de datos
-
-  // 5. Enviar una respuesta de éxito
-  res.status(200).json({
-    message: `¡Éxito! Tu cuenta (${user.email}) ha sido vinculada. Ahora recibirás notificaciones.`
-  });
 });
 
  const getProfile = asyncHandler(async (req, res) => {

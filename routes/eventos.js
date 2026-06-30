@@ -18,8 +18,8 @@ const  {
  
   //getEventosPendientesPorArea
   } = require('../controllers/proyectoController.js');
-  //import { getEventDetailsById } from '../controllers/evento.js';
-const  {protect,authorize} = require('../middleware/authMiddleware.js');
+const {enviarNotificacionTelegram} = require('botController.js');
+  const  {protect,authorize} = require('../middleware/authMiddleware.js');
 const router = express.Router();
 
 router.use((req, res, next) => {

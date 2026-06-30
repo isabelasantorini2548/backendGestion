@@ -136,6 +136,8 @@ const startServer = async () => {
     }
     process.exit(1);
   }
+  require('./services/recordatorios');
+  console.log('🤖 Servicios de notificaciones iniciados');
 };
 
 startServer();

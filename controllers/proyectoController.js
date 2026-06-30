@@ -984,7 +984,6 @@ const aprobarEvento = async (req, res) => {
 
 const rechazarEvento = async (req, res) => {
   const { id } = req.params;
-  //const { motivoRechazo } = req.body;
   try {
    const models = getModels();
     const { Evento } = models;
@@ -995,7 +994,11 @@ const rechazarEvento = async (req, res) => {
       return res.status(404).json({ error: 'Evento no encontrado' });
     }
 
-    await evento.update({ estado: 'rechazado', fecha_rechazo: new Date(),razon_rechazo: req.body.razon_rechazo || null });
+    await evento.update({
+      estado: 'rechazado', 
+      fecha_rechazo: new Date(),
+      razon_rechazo: req.body.razon_rechazo || null
+     });
      const eventoParaNotificar = {
       nombreevento: evento.nombreevento,
       fechaevento: evento.fechaevento,

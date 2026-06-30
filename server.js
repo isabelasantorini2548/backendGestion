@@ -72,6 +72,8 @@ if (frontendExists) {
 } else {
   app.get('/', (req, res) => res.json({ status: '✅ API online', servidor: 'Railway' }));
 }
+const { telegramWebhook } = require('./controllers/botController.js');
+app.post('/api/chat/telegram', telegramWebhook);
 const startServer = async () => {
   try {
     const { initModels } = require('./models/index.js');

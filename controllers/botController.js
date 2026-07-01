@@ -214,17 +214,21 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
 
     // 📋 COMANDOS
     if (text === '/start') {
-      const welcomeMessage = 
-`🤖 <b>¡Bienvenido al Bot de Eventos UNIFRANZ!</b>
+    const welcomeMessage = 
+    `🤖 <b>¡Bienvenido al Bot de Eventos UNIFRANZ!</b>
 
-Para vincular tu cuenta y recibir notificaciones, envía tu email institucional:
+    Para vincular tu cuenta y recibir notificaciones, envía tu email institucional:
 
-Ejemplo: <code>juan.perez@unifranz.edu.bo</code>
+    Ejemplo: <code>juan.perez@unifranz.edu.bo</code>
 
-Una vez vinculado, podrás usar:
-• /mis_eventos - Ver tus eventos aprobados
-• /estado - Verificar si tu cuenta está vinculada
-• /ayuda - Mostrar ayuda`;
+    <b>Comandos disponibles:</b>
+    • /mis_eventos - Eventos aprobados
+    • /pendientes - Eventos pendientes
+    • /rechazados - Eventos rechazados
+    • /comite - Eventos como comité
+    • /resumen - Resumen completo
+    • /estado - Verificar vinculación
+    • /ayuda - Mostrar ayuda`;
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
         chat_id: chatId,
@@ -311,14 +315,22 @@ Una vez vinculado, podrás usar:
 
     if (text === '/ayuda') {
       const helpMessage = 
-`📚 <b>Comandos disponibles:</b>
+    `📚 <b>Comandos disponibles:</b>
 
-/start - Bienvenida e instrucciones
-/mis_eventos - Ver tus eventos aprobados
-/estado - Verificar vinculación
-/ayuda - Mostrar esta ayuda
+    <b>Vinculación:</b>
+    • /start - Bienvenida
+    • /estado - Verificar vinculación
+    • Enviar email - Vincular cuenta
 
-📧 Para vincular tu cuenta, simplemente envía tu email institucional.`;
+    <b>Eventos:</b>
+    • /mis_eventos - Eventos aprobados
+    • /pendientes - Eventos pendientes
+    • /rechazados - Eventos rechazados
+    • /comite - Eventos donde eres comité
+    • /resumen - Resumen completo
+
+    <b>Otros:</b>
+    • /ayuda - Mostrar esta ayuda`;
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
         chat_id: chatId,
@@ -328,7 +340,215 @@ Una vez vinculado, podrás usar:
 
       return res.status(200).send('OK');
     }
+    if (text === '/pendientes') {
+  const models = getModels();
+  const { User, Evento } = models;
 
+  const usuario = await User.findOne({ 
+    where: { telegram_chat_id: chatId.toString() } 
+  });
+
+  if (!usuario) {
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: chatId,
+      text: '❌ Tu cuenta no está vinculada.\n\nEnvía tu email institucional para vincularla.',
+    });
+    return res.status(200).send('OK');
+  }
+
+  const eventosPendientes = await Evento.findAll({
+    where: { 
+      idacademico: usuario.idusuario,
+      estado: 'pendiente'
+    },
+    order: [['fechaevento', 'ASC']],
+    limit: 5
+  });
+
+  if (eventosPendientes.length === 0) {
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: chatId,
+      text: '✅ No tienes eventos pendientes de aprobación.',
+    });
+    return res.status(200).send('OK');
+  }
+
+  let message = `📋 <b>Eventos Pendientes (${eventosPendientes.length}):</b>\n\n`;
+  eventosPendientes.forEach((evento, index) => {
+    const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
+    message += `<b>${index + 1}. ${evento.nombreevento}</b>\n`;
+    message += `   🗓️ Fecha: ${fecha}\n`;
+    message += `   📍 Lugar: ${evento.lugarevento || 'No definido'}\n`;
+    message += `   ⏳ Estado: Pendiente de aprobación\n\n`;
+  });
+
+  await axios.post(`${TELEGRAM_API}/sendMessage`, {
+    chat_id: chatId,
+    text: message,
+    parse_mode: 'HTML'
+  });
+
+  return res.status(200).send('OK');
+    }
+    if (text === '/rechazados') {
+      const models = getModels();
+      const { User, Evento } = models;
+
+      const usuario = await User.findOne({ 
+        where: { telegram_chat_id: chatId.toString() } 
+      });
+
+      if (!usuario) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: '❌ Tu cuenta no está vinculada.\n\nEnvía tu email institucional para vincularla.',
+        });
+        return res.status(200).send('OK');
+      }
+
+      const eventosRechazados = await Evento.findAll({
+        where: { 
+          idacademico: usuario.idusuario,
+          estado: 'rechazado'
+        },
+        order: [['fecha_rechazo', 'DESC']],
+        limit: 5
+      });
+
+      if (eventosRechazados.length === 0) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: '✅ No tienes eventos rechazados.',
+        });
+        return res.status(200).send('OK');
+      }
+
+      let message = `❌ <b>Eventos Rechazados (${eventosRechazados.length}):</b>\n\n`;
+      eventosRechazados.forEach((evento, index) => {
+        const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
+        message += `<b>${index + 1}. ${evento.nombreevento}</b>\n`;
+        message += `   🗓️ Fecha: ${fecha}\n`;
+        message += `   📍 Lugar: ${evento.lugarevento || 'No definido'}\n`;
+        if (evento.razon_rechazo) {
+          message += `   💬 Motivo: ${evento.razon_rechazo}\n`;
+        }
+        message += `\n`;
+      });
+
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'HTML'
+      });
+
+      return res.status(200).send('OK');
+    }
+    if (text === '/comite') {
+      const models = getModels();
+      const { User, EventoComite, Evento } = models;
+
+      const usuario = await User.findOne({ 
+        where: { telegram_chat_id: chatId.toString() } 
+      });
+
+      if (!usuario) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: '❌ Tu cuenta no está vinculada.\n\nEnvía tu email institucional para vincularla.',
+        });
+        return res.status(200).send('OK');
+      }
+
+      // Buscar eventos donde el usuario es parte del comité
+      const comites = await EventoComite.findAll({
+        where: { idusuario: usuario.idusuario },
+        include: [{
+          model: Evento,
+          as: 'evento',
+          attributes: ['idevento', 'nombreevento', 'fechaevento', 'lugarevento', 'estado']
+        }],
+        limit: 5
+      });
+
+      if (!comites || comites.length === 0) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: '👥 No eres parte de ningún comité actualmente.',
+        });
+        return res.status(200).send('OK');
+      }
+
+      let message = `👥 <b>Eventos donde eres Comité (${comites.length}):</b>\n\n`;
+      comites.forEach((comite, index) => {
+        const evento = comite.evento;
+        if (evento) {
+          const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
+          const estadoEmoji = {
+            'aprobado': '✅',
+            'pendiente': '⏳',
+            'rechazado': '❌',
+            'cancelado': '🚫'
+          }[evento.estado] || '📝';
+          
+          message += `<b>${index + 1}. ${evento.nombreevento}</b>\n`;
+          message += `   🗓️ Fecha: ${fecha}\n`;
+          message += `   📍 Lugar: ${evento.lugarevento || 'No definido'}\n`;
+          message += `   ${estadoEmoji} Estado: ${evento.estado}\n\n`;
+        }
+      });
+
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'HTML'
+      });
+
+      return res.status(200).send('OK');
+    }
+    if (text === '/resumen') {
+      const models = getModels();
+      const { User, Evento, EventoComite } = models;
+
+      const usuario = await User.findOne({ 
+        where: { telegram_chat_id: chatId.toString() } 
+      });
+
+      if (!usuario) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: '❌ Tu cuenta no está vinculada.',
+        });
+        return res.status(200).send('OK');
+      }
+
+      const [aprobados, pendientes, rechazados, comites] = await Promise.all([
+        Evento.count({ where: { idacademico: usuario.idusuario, estado: 'aprobado' } }),
+        Evento.count({ where: { idacademico: usuario.idusuario, estado: 'pendiente' } }),
+        Evento.count({ where: { idacademico: usuario.idusuario, estado: 'rechazado' } }),
+        EventoComite.count({ where: { idusuario: usuario.idusuario } })
+      ]);
+
+      const message = 
+    `📊 <b>Resumen de tu actividad:</b>
+
+    👤 <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>
+    📧 ${usuario.email}
+
+    ✅ Eventos Aprobados: <b>${aprobados}</b>
+    ⏳ Eventos Pendientes: <b>${pendientes}</b>
+    ❌ Eventos Rechazados: <b>${rechazados}</b>
+    👥 Como Comité: <b>${comites}</b> eventos
+
+    Usa /mis_eventos, /pendientes, /rechazados o /comite para ver detalles.`;
+
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'HTML'
+      });
+
+      return res.status(200).send('OK');
+    }
     // Comando no reconocido
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: chatId,

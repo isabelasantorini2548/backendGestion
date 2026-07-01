@@ -604,7 +604,6 @@ const enviarNotificacionTelegram = async (evento, tipo) => {
     const models = getModels();
     const { Evento, User } = models;
 
-    // Obtener el evento completo con el creador
     const eventoCompleto = await Evento.findByPk(evento.idevento || evento.id, {
       include: [
         {
@@ -627,7 +626,6 @@ const enviarNotificacionTelegram = async (evento, tipo) => {
       return;
     }
 
-    // Buscar el usuario creador para obtener su telegram_chat_id
     const usuarioCreador = await User.findByPk(idAcademico);
 
     if (!usuarioCreador || !usuarioCreador.telegram_chat_id) {
@@ -641,43 +639,42 @@ const enviarNotificacionTelegram = async (evento, tipo) => {
     let mensaje = '';
     
     if (tipo === 'aprobado') {
-      mensaje = `
-✅ *¡Evento Aprobado!*
+      mensaje = 
+`✅ <b>¡Evento Aprobado!</b>
 
-📅 *${evento.nombreevento}*
+📅 <b>${evento.nombreevento}</b>
 
 🗓️ Fecha: ${fechaEvento}
 ${evento.horaevento ? `🕐 Hora: ${evento.horaevento}` : ''}
 📍 Lugar: ${evento.lugarevento}
 👤 Responsable: ${evento.responsable_evento}
 
-¡Tu evento ha sido aprobado exitosamente!
-      `;
+¡Tu evento ha sido aprobado exitosamente!`;
     } else if (tipo === 'rechazado') {
-      mensaje = `
-❌ *Evento Rechazado*
+      mensaje = 
+`❌ <b>Evento Rechazado</b>
 
-📅 *${evento.nombreevento}*
+📅 <b>${evento.nombreevento}</b>
 
 🗓️ Fecha: ${fechaEvento}
 📍 Lugar: ${evento.lugarevento}
 👤 Responsable: ${evento.responsable_evento}
 
-${evento.razon_rechazo ? `💬 *Motivo:* ${evento.razon_rechazo}` : ''}
+${evento.razon_rechazo ? `💬 <b>Motivo:</b> ${evento.razon_rechazo}` : ''}
 
-Tu evento ha sido rechazado.
-      `;
+Tu evento ha sido rechazado.`;
     }
 
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: chatId,
       text: mensaje,
-      parse_mode: 'Markdown'
+      parse_mode: 'HTML'  // ← Cambiado a HTML
     });
 
     console.log(`✅ Notificación Telegram enviada a ${chatId}`);
   } catch (error) {
     console.error('❌ Error al enviar notificación Telegram:', error.message);
+    console.error('❌ Response:', error.response?.data);
   }
 };
 

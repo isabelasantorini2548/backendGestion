@@ -1,9 +1,301 @@
 const axios = require('axios');
 const { getModels } = require('../models/index.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { Op } = require('sequelize');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const TELEGRAM_API = `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}`;
+
+// ============================================
+// FUNCIONES AUXILIARES PARA OBTENER EVENTOS
+// ============================================
+
+const getEventosAprobadosForBot = async (usuarioId, userRole) => {
+  const models = getModels();
+  const { Evento, User, Fase, Academico } = models;
+  
+  try {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    let eventos;
+
+    if (userRole === 'admin' || userRole === 'daf') {
+      eventos = await Evento.findAll({
+        where: { estado: 'aprobado' },
+        attributes: { include: ['idfase'] },
+        include: [{
+          model: User,
+          as: 'academicoCreador',
+          attributes: ['nombre', 'apellidopat', 'apellidomat']
+        }],
+        order: [['created_at', 'DESC']]
+      });
+    } else {
+      // Para académico: eventos propios + eventos de su facultad + eventos donde es comité
+      const eventosEnComite = await models.sequelize.query(
+        'SELECT idevento FROM comite WHERE idusuario = ?',
+        { replacements: [usuarioId], type: models.sequelize.QueryTypes.SELECT }
+      );
+      const idsEventosComite = eventosEnComite.map(r => r.idevento);
+
+      const academicoActual = await Academico.findOne({
+        where: { idusuario: usuarioId },
+        attributes: ['facultad_id']
+      });
+
+      let idsCreadores = [];
+      if (academicoActual?.facultad_id) {
+        const creadoresMismaFacultad = await Academico.findAll({
+          where: { facultad_id: academicoActual.facultad_id },
+          attributes: ['idusuario']
+        });
+        idsCreadores = creadoresMismaFacultad.map(a => a.idusuario);
+      }
+
+      const condiciones = [];
+      if (idsCreadores.length > 0) {
+        condiciones.push({ idacademico: { [Op.in]: idsCreadores } });
+      }
+      if (idsEventosComite.length > 0) {
+        condiciones.push({ idevento: { [Op.in]: idsEventosComite } });
+      }
+
+      if (condiciones.length === 0) {
+        return { activos: [], vencidos: [], total: 0 };
+      }
+
+      eventos = await Evento.findAll({
+        where: {
+          estado: 'aprobado',
+          [Op.or]: condiciones
+        },
+        include: [{
+          model: User,
+          as: 'academicoCreador',
+          attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat']
+        }],
+        order: [['created_at', 'DESC']]
+      });
+    }
+
+    const activos = [];
+    const vencidos = [];
+
+    eventos.forEach(evento => {
+      const fechaEvento = new Date(evento.fechaevento);
+      fechaEvento.setHours(0, 0, 0, 0);
+      
+      const eventData = evento.get({ plain: true });
+      eventData.esVencido = fechaEvento < hoy;
+
+      if (fechaEvento >= hoy) {
+        activos.push(eventData);
+      } else {
+        vencidos.push(eventData);
+      }
+    });
+
+    return { activos, vencidos, total: eventos.length };
+  } catch (error) {
+    console.error('❌ Error en getEventosAprobadosForBot:', error);
+    return { activos: [], vencidos: [], total: 0 };
+  }
+};
+
+const getEventosNoAprobadosForBot = async (usuarioId, userRole) => {
+  const models = getModels();
+  const { Evento, User, Academico, Facultad } = models;
+
+  try {
+    const fechaLimite = new Date();
+    fechaLimite.setMonth(fechaLimite.getMonth() - 1);
+
+    let eventos;
+
+    if (userRole === 'admin' || userRole === 'daf') {
+      eventos = await Evento.findAll({
+        where: {
+          estado: 'pendiente',
+          created_at: { [Op.gte]: fechaLimite }
+        },
+        distinct: true,
+        attributes: { include: ['idfase'] },
+        include: [{
+          model: User,
+          as: 'academicoCreador',
+          attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat'],
+          include: [{
+            model: Academico,
+            as: 'academico',
+            attributes: ['facultad_id'],
+            include: [{
+              model: Facultad,
+              as: 'facultad',
+              attributes: ['nombre_facultad']
+            }]
+          }]
+        }],
+        order: [['created_at', 'DESC']]
+      });
+    } else {
+      const academicoLogueado = await Academico.findOne({
+        where: { idusuario: usuarioId },
+        attributes: ['facultad_id']
+      });
+      if (!academicoLogueado) return [];
+
+      eventos = await Evento.findAll({
+        where: {
+          estado: 'pendiente',
+          created_at: { [Op.gte]: fechaLimite }
+        },
+        subQuery: false,
+        include: [{
+          model: User,
+          as: 'academicoCreador',
+          attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat'],
+          required: true,
+          include: [{
+            model: Academico,
+            as: 'academico',
+            attributes: ['facultad_id'],
+            where: { facultad_id: academicoLogueado.facultad_id },
+            required: true,
+            include: [{
+              model: Facultad,
+              as: 'facultad',
+              attributes: ['nombre_facultad']
+            }]
+          }]
+        }],
+        order: [['created_at', 'DESC']]
+      });
+    }
+
+    return eventos.map(event => event.get({ plain: true }));
+  } catch (error) {
+    console.error('❌ Error en getEventosNoAprobadosForBot:', error);
+    return [];
+  }
+};
+
+const getEventosRechazadosForBot = async (usuarioId, userRole) => {
+  const models = getModels();
+  const { Evento, User, Academico, Facultad } = models;
+
+  try {
+    let eventos;
+
+    if (userRole === 'admin' || userRole === 'daf') {
+      eventos = await Evento.findAll({
+        where: { estado: 'rechazado' },
+        distinct: true,
+        attributes: { include: ['idfase', 'razon_rechazo', 'fecha_rechazo'] },
+        include: [{
+          model: User,
+          as: 'academicoCreador',
+          attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat', 'email'],
+          include: [{
+            model: Academico,
+            as: 'academico',
+            attributes: ['facultad_id'],
+            include: [{
+              model: Facultad,
+              as: 'facultad',
+              attributes: ['nombre_facultad']
+            }]
+          }]
+        }],
+        order: [['fecha_rechazo', 'DESC']]
+      });
+    } else {
+      eventos = await Evento.findAll({
+        where: {
+          estado: 'rechazado',
+          idacademico: usuarioId
+        },
+        distinct: true,
+        attributes: { include: ['idfase', 'razon_rechazo', 'fecha_rechazo'] },
+        include: [{
+          model: User,
+          as: 'academicoCreador',
+          attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat']
+        }],
+        order: [['fecha_rechazo', 'DESC']]
+      });
+    }
+
+    return eventos.map(event => event.get({ plain: true }));
+  } catch (error) {
+    console.error('❌ Error en getEventosRechazadosForBot:', error);
+    return [];
+  }
+};
+
+// ============================================
+// FUNCIONES DE FORMATO PARA TELEGRAM
+// ============================================
+
+const formatearEventoAprobado = (evento, index) => {
+  const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
+  const creador = evento.academicoCreador;
+  const organizador = creador 
+    ? `${creador.nombre || ''} ${creador.apellidopat || ''}`.trim() 
+    : 'Sin organizador';
+  
+  return `<b>${index + 1}. ${evento.nombreevento || 'Sin título'}</b>
+   🗓️ Fecha: ${fecha}
+   🕐 Hora: ${evento.horaevento || 'N/A'}
+   📍 Lugar: ${evento.lugarevento || 'Sin ubicación'}
+   👤 Organizador: ${organizador}
+   ✅ Estado: Aprobado`;
+};
+
+const formatearEventoPendiente = (evento, index) => {
+  const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
+  const creador = evento.academicoCreador;
+  const organizador = creador 
+    ? `${creador.nombre || ''} ${creador.apellidopat || ''}`.trim() 
+    : 'Sin organizador';
+  const facultad = creador?.academico?.facultad?.nombre_facultad || 'Sin facultad';
+  
+  return `<b>${index + 1}. ${evento.nombreevento || 'Sin título'}</b>
+   🗓️ Fecha: ${fecha}
+   🕐 Hora: ${evento.horaevento || 'N/A'}
+   📍 Lugar: ${evento.lugarevento || 'Sin ubicación'}
+   👤 Organizador: ${organizador}
+   🏫 Facultad: ${facultad}
+   ⏳ Estado: Pendiente de aprobación`;
+};
+
+const formatearEventoRechazado = (evento, index) => {
+  const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
+  const fechaRechazo = evento.fecha_rechazo 
+    ? new Date(evento.fecha_rechazo).toLocaleDateString('es-ES') 
+    : 'N/A';
+  const creador = evento.academicoCreador;
+  const organizador = creador 
+    ? `${creador.nombre || ''} ${creador.apellidopat || ''}`.trim() 
+    : 'Sin organizador';
+  
+  let mensaje = `<b>${index + 1}. ${evento.nombreevento || 'Sin título'}</b>
+   🗓️ Fecha: ${fecha}
+   📍 Lugar: ${evento.lugarevento || 'Sin ubicación'}
+   👤 Organizador: ${organizador}
+   ❌ Estado: Rechazado
+   📅 Fecha de rechazo: ${fechaRechazo}`;
+  
+  if (evento.razon_rechazo) {
+    mensaje += `\n   💬 Motivo: ${evento.razon_rechazo}`;
+  }
+  
+  return mensaje;
+};
+
+// ============================================
+// GEMINI AI
+// ============================================
 
 async function askGemini(userMessage, senderInfo = 'Invitado', eventosContexto = "", history = []) {
   const SYSTEM_PROMPT = `Eres el asistente virtual de gestión de eventos de la UNIFRANZ.
@@ -16,10 +308,8 @@ async function askGemini(userMessage, senderInfo = 'Invitado', eventosContexto =
 📊 CONTEXTO DEL SISTEMA:
 ${eventosContexto || "Sin eventos activos en este momento."}`;
 
-  // Preparar historial en formato válido para Gemini
   const contents = [];
   
-  // Agregar historial previo (alternando user/model)
   for (const msg of history.slice(-6)) {
     contents.push({
       role: msg.role === 'bot' ? 'model' : 'user',
@@ -27,18 +317,16 @@ ${eventosContexto || "Sin eventos activos en este momento."}`;
     });
   }
   
-  // Agregar mensaje actual del usuario
   contents.push({
     role: 'user',
     parts: [{ text: userMessage }]
   });
 
-  // Probar modelos en orden de preferencia
   for (const modelName of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
     try {
       const model = genAI.getGenerativeModel({ 
         model: modelName,
-        systemInstruction: SYSTEM_PROMPT // ← System prompt separado (SDK v0.12+)
+        systemInstruction: SYSTEM_PROMPT
       });
 
       const result = await model.generateContent({ contents });
@@ -46,11 +334,9 @@ ${eventosContexto || "Sin eventos activos en este momento."}`;
       
     } catch (err) {
       console.warn(`⚠️ Fallo con ${modelName}:`, err.message);
-      // Si falla por systemInstruction no soportado, reintentar sin él
       if (err.message?.includes('systemInstruction')) {
         try {
           const model = genAI.getGenerativeModel({ model: modelName });
-          // Fallback: prepend system prompt al primer mensaje
           const fallbackContents = [
             { role: 'user', parts: [{ text: `${SYSTEM_PROMPT}\n\nPregunta: ${userMessage}` }] },
             ...contents.slice(1)
@@ -72,6 +358,10 @@ function getMessage() {
   try { return getModels()?.Message || null; } catch { return null; }
 }
 
+// ============================================
+// CHAT APP
+// ============================================
+
 const appChat = async (req, res) => {
   try {
     const models = getModels();
@@ -82,7 +372,6 @@ const appChat = async (req, res) => {
 
     let eventosContexto = "";
 
-    // 🎯 Contexto específico si viene eventId
     if (Evento && eventId) {
       const evento = await Evento.findByPk(eventId, {
         attributes: ['nombreevento', 'fechaevento', 'descripcion', 'lugarevento', 'estado']
@@ -91,15 +380,14 @@ const appChat = async (req, res) => {
         eventosContexto = `EVENTO CONSULTADO:\n• Nombre: ${evento.nombreevento}\n• Fecha: ${evento.fechaevento}\n• Lugar: ${evento.lugarevento}\n• Estado: ${evento.estado}\n• Descripción: ${evento.descripcion}`;
       }
     } 
-    // 📋 Lista general si no hay eventId
     else if (Evento) {
       const lista = await Evento.findAll({ 
-        where: { estado: 'activo' }, 
+        where: { estado: 'aprobado' }, 
         limit: 4, 
         attributes: ['nombreevento', 'fechaevento', 'estado'] 
       });
       if (lista.length > 0) {
-        eventosContexto = "Eventos activos:\n" + lista.map(e => 
+        eventosContexto = "Eventos aprobados:\n" + lista.map(e => 
           `- ${e.nombreevento} (${e.fechaevento}) [${e.estado}]`
         ).join('\n');
       }
@@ -107,7 +395,6 @@ const appChat = async (req, res) => {
 
     const reply = await askGemini(message, sender, eventosContexto, history);
 
-    // 💾 Guardar en BD si el usuario está autenticado
     if (Message && sender !== 'invitado' && sender !== 'anonymous') {
       await Promise.all([
         Message.create({ 
@@ -144,6 +431,10 @@ const getMessages = async (req, res) => {
 const botStatus = (req, res) => {
   res.json({ status: 'online', platform: 'gemini', timestamp: new Date().toISOString() });
 };
+
+// ============================================
+// TELEGRAM WEBHOOK
+// ============================================
 
 const telegramWebhook = async (req, res) => {
   console.log('📩 [TELEGRAM] Webhook recibido');
@@ -191,7 +482,6 @@ const telegramWebhook = async (req, res) => {
         { where: { email: text.toLowerCase() } }
       );
 
-      // ✅ Usar HTML en lugar de Markdown
       const successMessage = 
 `✅ <b>¡Cuenta vinculada exitosamente!</b>
 
@@ -206,7 +496,7 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
         chat_id: chatId,
         text: successMessage,
-        parse_mode: 'HTML'  // ← CAMBIAR A HTML
+        parse_mode: 'HTML'
       });
 
       return res.status(200).send('OK');
@@ -214,21 +504,21 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
 
     // 📋 COMANDOS
     if (text === '/start') {
-    const welcomeMessage = 
-    `🤖 <b>¡Bienvenido al Bot de Eventos UNIFRANZ!</b>
+      const welcomeMessage = 
+`🤖 <b>¡Bienvenido al Bot de Eventos UNIFRANZ!</b>
 
-    Para vincular tu cuenta y recibir notificaciones, envía tu email institucional:
+Para vincular tu cuenta y recibir notificaciones, envía tu email institucional:
 
-    Ejemplo: <code>juan.perez@unifranz.edu.bo</code>
+Ejemplo: <code>juan.perez@unifranz.edu.bo</code>
 
-    <b>Comandos disponibles:</b>
-    • /mis_eventos - Eventos aprobados
-    • /pendientes - Eventos pendientes
-    • /rechazados - Eventos rechazados
-    • /comite - Eventos como comité
-    • /resumen - Resumen completo
-    • /estado - Verificar vinculación
-    • /ayuda - Mostrar ayuda`;
+<b>Comandos disponibles:</b>
+• /mis_eventos - Eventos aprobados (detallado)
+• /pendientes - Eventos pendientes (detallado)
+• /rechazados - Eventos rechazados (con motivos)
+• /comite - Eventos donde eres comité
+• /resumen - Resumen completo con estadísticas
+• /estado - Verificar vinculación
+• /ayuda - Mostrar ayuda`;
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
         chat_id: chatId,
@@ -255,7 +545,7 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
       } else {
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
-          text: `✅ Tu cuenta está vinculada como:\n\n👤 <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>\n📧 ${usuario.email}\n\nRecibirás notificaciones automáticas.`,
+          text: `✅ Tu cuenta está vinculada como:\n\n👤 <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>\n📧 ${usuario.email}\n👑 Rol: ${usuario.role || 'usuario'}\n\nRecibirás notificaciones automáticas.`,
           parse_mode: 'HTML'
         });
       }
@@ -263,9 +553,10 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
       return res.status(200).send('OK');
     }
 
+    // 🟢 EVENTOS APROBADOS (DETALLADO)
     if (text === '/mis_eventos') {
       const models = getModels();
-      const { User, Evento } = models;
+      const { User } = models;
 
       const usuario = await User.findOne({ 
         where: { telegram_chat_id: chatId.toString() } 
@@ -279,29 +570,77 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
         return res.status(200).send('OK');
       }
 
-      const eventos = await Evento.findAll({
-        where: { 
-          idacademico: usuario.idusuario,
-          estado: 'aprobado'
-        },
-        order: [['fechaevento', 'ASC']],
-        limit: 5
-      });
+      const { activos, vencidos, total } = await getEventosAprobadosForBot(
+        usuario.idusuario, 
+        usuario.role
+      );
 
-      if (eventos.length === 0) {
+      if (total === 0) {
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
-          text: ' No tienes eventos aprobados próximos.',
+          text: '✅ No tienes eventos aprobados.',
         });
         return res.status(200).send('OK');
       }
 
-      let message = ' <b>Tus próximos eventos:</b>\n\n';
-      eventos.forEach((evento, index) => {
-        const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
-        message += `<b>${index + 1}. ${evento.nombreevento}</b>\n`;
-        message += `   🗓️ ${fecha}\n`;
-        message += `   📍 ${evento.lugarevento}\n\n`;
+      let message = `✅ <b>Eventos Aprobados (${total})</b>\n\n`;
+      
+      if (activos.length > 0) {
+        message += `<b>📅 Próximos eventos (${activos.length}):</b>\n\n`;
+        activos.slice(0, 5).forEach((evento, index) => {
+          message += formatearEventoAprobado(evento, index) + '\n\n';
+        });
+      }
+      
+      if (vencidos.length > 0) {
+        message += `\n<b>📜 Eventos pasados (${vencidos.length}):</b>\n\n`;
+        vencidos.slice(0, 3).forEach((evento, index) => {
+          message += formatearEventoAprobado(evento, index) + '\n\n';
+        });
+      }
+
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'HTML'
+      });
+
+      return res.status(200).send('OK');
+    }
+
+    // 🟡 EVENTOS PENDIENTES (DETALLADO)
+    if (text === '/pendientes') {
+      const models = getModels();
+      const { User } = models;
+
+      const usuario = await User.findOne({ 
+        where: { telegram_chat_id: chatId.toString() } 
+      });
+
+      if (!usuario) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: '❌ Tu cuenta no está vinculada.\n\nEnvía tu email institucional para vincularla.',
+        });
+        return res.status(200).send('OK');
+      }
+
+      const eventosPendientes = await getEventosNoAprobadosForBot(
+        usuario.idusuario, 
+        usuario.role
+      );
+
+      if (eventosPendientes.length === 0) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: '✅ No tienes eventos pendientes de aprobación.',
+        });
+        return res.status(200).send('OK');
+      }
+
+      let message = `⏳ <b>Eventos Pendientes (${eventosPendientes.length})</b>\n\n`;
+      eventosPendientes.slice(0, 5).forEach((evento, index) => {
+        message += formatearEventoPendiente(evento, index) + '\n\n';
       });
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -313,86 +652,10 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
       return res.status(200).send('OK');
     }
 
-    if (text === '/ayuda') {
-      const helpMessage = 
-    `📚 <b>Comandos disponibles:</b>
-
-    <b>Vinculación:</b>
-    • /start - Bienvenida
-    • /estado - Verificar vinculación
-    • Enviar email - Vincular cuenta
-
-    <b>Eventos:</b>
-    • /mis_eventos - Eventos aprobados
-    • /pendientes - Eventos pendientes
-    • /rechazados - Eventos rechazados
-    • /comite - Eventos donde eres comité
-    • /resumen - Resumen completo
-
-    <b>Otros:</b>
-    • /ayuda - Mostrar esta ayuda`;
-
-      await axios.post(`${TELEGRAM_API}/sendMessage`, {
-        chat_id: chatId,
-        text: helpMessage,
-        parse_mode: 'HTML'
-      });
-
-      return res.status(200).send('OK');
-    }
-    if (text === '/pendientes') {
-  const models = getModels();
-  const { User, Evento } = models;
-
-  const usuario = await User.findOne({ 
-    where: { telegram_chat_id: chatId.toString() } 
-  });
-
-  if (!usuario) {
-    await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: chatId,
-      text: '❌ Tu cuenta no está vinculada.\n\nEnvía tu email institucional para vincularla.',
-    });
-    return res.status(200).send('OK');
-  }
-
-  const eventosPendientes = await Evento.findAll({
-    where: { 
-      idacademico: usuario.idusuario,
-      estado: 'pendiente'
-    },
-    order: [['fechaevento', 'ASC']],
-    limit: 5
-  });
-
-  if (eventosPendientes.length === 0) {
-    await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: chatId,
-      text: '✅ No tienes eventos pendientes de aprobación.',
-    });
-    return res.status(200).send('OK');
-  }
-
-  let message = `📋 <b>Eventos Pendientes (${eventosPendientes.length}):</b>\n\n`;
-  eventosPendientes.forEach((evento, index) => {
-    const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
-    message += `<b>${index + 1}. ${evento.nombreevento}</b>\n`;
-    message += `   🗓️ Fecha: ${fecha}\n`;
-    message += `   📍 Lugar: ${evento.lugarevento || 'No definido'}\n`;
-    message += `   ⏳ Estado: Pendiente de aprobación\n\n`;
-  });
-
-  await axios.post(`${TELEGRAM_API}/sendMessage`, {
-    chat_id: chatId,
-    text: message,
-    parse_mode: 'HTML'
-  });
-
-  return res.status(200).send('OK');
-    }
+    // 🔴 EVENTOS RECHAZADOS (DETALLADO)
     if (text === '/rechazados') {
       const models = getModels();
-      const { User, Evento } = models;
+      const { User } = models;
 
       const usuario = await User.findOne({ 
         where: { telegram_chat_id: chatId.toString() } 
@@ -406,14 +669,10 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
         return res.status(200).send('OK');
       }
 
-      const eventosRechazados = await Evento.findAll({
-        where: { 
-          idacademico: usuario.idusuario,
-          estado: 'rechazado'
-        },
-        order: [['fecha_rechazo', 'DESC']],
-        limit: 5
-      });
+      const eventosRechazados = await getEventosRechazadosForBot(
+        usuario.idusuario, 
+        usuario.role
+      );
 
       if (eventosRechazados.length === 0) {
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -423,16 +682,9 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
         return res.status(200).send('OK');
       }
 
-      let message = `❌ <b>Eventos Rechazados (${eventosRechazados.length}):</b>\n\n`;
-      eventosRechazados.forEach((evento, index) => {
-        const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
-        message += `<b>${index + 1}. ${evento.nombreevento}</b>\n`;
-        message += `   🗓️ Fecha: ${fecha}\n`;
-        message += `   📍 Lugar: ${evento.lugarevento || 'No definido'}\n`;
-        if (evento.razon_rechazo) {
-          message += `   💬 Motivo: ${evento.razon_rechazo}\n`;
-        }
-        message += `\n`;
+      let message = `❌ <b>Eventos Rechazados (${eventosRechazados.length})</b>\n\n`;
+      eventosRechazados.slice(0, 5).forEach((evento, index) => {
+        message += formatearEventoRechazado(evento, index) + '\n\n';
       });
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -443,9 +695,11 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
 
       return res.status(200).send('OK');
     }
+
+    // 👥 EVENTOS COMO COMITÉ
     if (text === '/comite') {
       const models = getModels();
-      const { User, EventoComite, Evento } = models;
+      const { User, Evento } = models;
 
       const usuario = await User.findOne({ 
         where: { telegram_chat_id: chatId.toString() } 
@@ -459,16 +713,19 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
         return res.status(200).send('OK');
       }
 
-      // Buscar eventos donde el usuario es parte del comité
-      const comites = await EventoComite.findAll({
-        where: { idusuario: usuario.idusuario },
-        include: [{
-          model: Evento,
-          as: 'evento',
-          attributes: ['idevento', 'nombreevento', 'fechaevento', 'lugarevento', 'estado']
-        }],
-        limit: 5
-      });
+      const comites = await models.sequelize.query(
+        `SELECT e.idevento, e.nombreevento, e.fechaevento, e.lugarevento, e.estado,
+                u.nombre, u.apellidopat
+         FROM comite c
+         JOIN evento e ON c.idevento = e.idevento
+         LEFT JOIN usuario u ON e.idacademico = u.idusuario
+         WHERE c.idusuario = ?
+         ORDER BY e.fechaevento ASC`,
+        { 
+          replacements: [usuario.idusuario],
+          type: models.sequelize.QueryTypes.SELECT
+        }
+      );
 
       if (!comites || comites.length === 0) {
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -478,23 +735,20 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
         return res.status(200).send('OK');
       }
 
-      let message = `👥 <b>Eventos donde eres Comité (${comites.length}):</b>\n\n`;
-      comites.forEach((comite, index) => {
-        const evento = comite.evento;
-        if (evento) {
-          const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
-          const estadoEmoji = {
-            'aprobado': '✅',
-            'pendiente': '⏳',
-            'rechazado': '❌',
-            'cancelado': '🚫'
-          }[evento.estado] || '📝';
-          
-          message += `<b>${index + 1}. ${evento.nombreevento}</b>\n`;
-          message += `   🗓️ Fecha: ${fecha}\n`;
-          message += `   📍 Lugar: ${evento.lugarevento || 'No definido'}\n`;
-          message += `   ${estadoEmoji} Estado: ${evento.estado}\n\n`;
-        }
+      let message = `👥 <b>Eventos donde eres Comité (${comites.length})</b>\n\n`;
+      comites.slice(0, 5).forEach((evento, index) => {
+        const fecha = new Date(evento.fechaevento).toLocaleDateString('es-ES');
+        const estadoEmoji = {
+          'aprobado': '✅',
+          'pendiente': '⏳',
+          'rechazado': '❌',
+          'cancelado': '🚫'
+        }[evento.estado] || '📝';
+        
+        message += `<b>${index + 1}. ${evento.nombreevento}</b>\n`;
+        message += `   🗓️ Fecha: ${fecha}\n`;
+        message += `   📍 Lugar: ${evento.lugarevento || 'No definido'}\n`;
+        message += `   ${estadoEmoji} Estado: ${evento.estado}\n\n`;
       });
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -505,9 +759,11 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
 
       return res.status(200).send('OK');
     }
+
+    // 📊 RESUMEN COMPLETO
     if (text === '/resumen') {
       const models = getModels();
-      const { User, Evento, EventoComite } = models;
+      const { User } = models;
 
       const usuario = await User.findOne({ 
         where: { telegram_chat_id: chatId.toString() } 
@@ -521,25 +777,40 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
         return res.status(200).send('OK');
       }
 
-      const [aprobados, pendientes, rechazados, comites] = await Promise.all([
-        Evento.count({ where: { idacademico: usuario.idusuario, estado: 'aprobado' } }),
-        Evento.count({ where: { idacademico: usuario.idusuario, estado: 'pendiente' } }),
-        Evento.count({ where: { idacademico: usuario.idusuario, estado: 'rechazado' } }),
-        EventoComite.count({ where: { idusuario: usuario.idusuario } })
-      ]);
+      const { activos, vencidos, total: totalAprobados } = await getEventosAprobadosForBot(
+        usuario.idusuario, 
+        usuario.role
+      );
+      const eventosPendientes = await getEventosNoAprobadosForBot(usuario.idusuario, usuario.role);
+      const eventosRechazados = await getEventosRechazadosForBot(usuario.idusuario, usuario.role);
+
+      const comites = await models.sequelize.query(
+        'SELECT COUNT(*) as total FROM comite WHERE idusuario = ?',
+        { 
+          replacements: [usuario.idusuario],
+          type: models.sequelize.QueryTypes.SELECT
+        }
+      );
+      const totalComites = comites[0]?.total || 0;
 
       const message = 
-    `📊 <b>Resumen de tu actividad:</b>
+`📊 <b>Resumen de tu actividad</b>
 
-    👤 <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>
-    📧 ${usuario.email}
+👤 <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>
+📧 ${usuario.email}
+👑 Rol: ${usuario.role || 'usuario'}
 
-    ✅ Eventos Aprobados: <b>${aprobados}</b>
-    ⏳ Eventos Pendientes: <b>${pendientes}</b>
-    ❌ Eventos Rechazados: <b>${rechazados}</b>
-    👥 Como Comité: <b>${comites}</b> eventos
+✅ <b>Eventos Aprobados: ${totalAprobados}</b>
+   📅 Activos: ${activos.length}
+   📜 Pasados: ${vencidos.length}
 
-    Usa /mis_eventos, /pendientes, /rechazados o /comite para ver detalles.`;
+⏳ <b>Eventos Pendientes: ${eventosPendientes.length}</b>
+
+❌ <b>Eventos Rechazados: ${eventosRechazados.length}</b>
+
+👥 <b>Como Comité: ${totalComites} eventos</b>
+
+Usa /mis_eventos, /pendientes, /rechazados o /comite para ver detalles.`;
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
         chat_id: chatId,
@@ -549,6 +820,35 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
 
       return res.status(200).send('OK');
     }
+
+    if (text === '/ayuda') {
+      const helpMessage = 
+`📚 <b>Comandos disponibles:</b>
+
+<b>Vinculación:</b>
+• /start - Bienvenida
+• /estado - Verificar vinculación
+• Enviar email - Vincular cuenta
+
+<b>Eventos:</b>
+• /mis_eventos - Eventos aprobados (detallado)
+• /pendientes - Eventos pendientes (detallado)
+• /rechazados - Eventos rechazados (con motivos)
+• /comite - Eventos donde eres comité
+• /resumen - Resumen completo con estadísticas
+
+<b>Otros:</b>
+• /ayuda - Mostrar esta ayuda`;
+
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: helpMessage,
+        parse_mode: 'HTML'
+      });
+
+      return res.status(200).send('OK');
+    }
+
     // Comando no reconocido
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: chatId,
@@ -567,7 +867,6 @@ Hola <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>, ahora recibirás not
   
   res.status(200).send('OK');
 };
-
 
 const whatsappWebhook = async (req, res) => {
   res.status(200).json({ received: true });
@@ -599,17 +898,33 @@ const getChatHistory = async (req, res) => {
     res.status(500).json({ error: 'Error al cargar el historial' });
   }
 };
+
+// ============================================
+// NOTIFICACIONES TELEGRAM (ACTUALIZADO)
+// ============================================
+
 const enviarNotificacionTelegram = async (evento, tipo) => {
   try {
     const models = getModels();
-    const { Evento, User } = models;
+    const { Evento, User, Academico, Facultad } = models;
 
+    // Obtener evento completo con toda la información
     const eventoCompleto = await Evento.findByPk(evento.idevento || evento.id, {
       include: [
         {
           model: User,
           as: 'academicoCreador',
-          attributes: ['idusuario', 'telegram_chat_id']
+          attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat', 'email', 'telegram_chat_id', 'role'],
+          include: [{
+            model: Academico,
+            as: 'academico',
+            attributes: ['facultad_id'],
+            include: [{
+              model: Facultad,
+              as: 'facultad',
+              attributes: ['nombre_facultad']
+            }]
+          }]
         }
       ]
     });
@@ -626,7 +941,7 @@ const enviarNotificacionTelegram = async (evento, tipo) => {
       return;
     }
 
-    const usuarioCreador = await User.findByPk(idAcademico);
+    const usuarioCreador = eventoCompleto.academicoCreador || await User.findByPk(idAcademico);
 
     if (!usuarioCreador || !usuarioCreador.telegram_chat_id) {
       console.log(`⚠️ Usuario ${idAcademico} no tiene telegram_chat_id`);
@@ -634,44 +949,78 @@ const enviarNotificacionTelegram = async (evento, tipo) => {
     }
 
     const chatId = usuarioCreador.telegram_chat_id;
-    const fechaEvento = new Date(evento.fechaevento).toLocaleDateString('es-ES');
+    const fechaEvento = new Date(evento.fechaevento || eventoCompleto.fechaevento).toLocaleDateString('es-ES');
+    const facultadNombre = usuarioCreador.academico?.facultad?.nombre_facultad || 'Sin facultad';
     
     let mensaje = '';
     
     if (tipo === 'aprobado') {
+      // Obtener resumen de eventos del usuario
+      const { activos, vencidos, total } = await getEventosAprobadosForBot(idAcademico, usuarioCreador.role);
+      const eventosPendientes = await getEventosNoAprobadosForBot(idAcademico, usuarioCreador.role);
+      
       mensaje = 
-`✅ <b>¡Evento Aprobado!</b>
+`✅ <b>¡EVENTO APROBADO!</b>
 
-📅 <b>${evento.nombreevento}</b>
+📅 <b>${evento.nombreevento || eventoCompleto.nombreevento}</b>
 
 🗓️ Fecha: ${fechaEvento}
-${evento.horaevento ? `🕐 Hora: ${evento.horaevento}` : ''}
-📍 Lugar: ${evento.lugarevento}
-👤 Responsable: ${evento.responsable_evento}
+${evento.horaevento || eventoCompleto.horaevento ? `🕐 Hora: ${evento.horaevento || eventoCompleto.horaevento}` : ''}
+📍 Lugar: ${evento.lugarevento || eventoCompleto.lugarevento}
+👤 Responsable: ${evento.responsable_evento || `${usuarioCreador.nombre} ${usuarioCreador.apellidopat || ''}`.trim()}
+🏫 Facultad: ${facultadNombre}
 
-¡Tu evento ha sido aprobado exitosamente!`;
+━━━━━━━━━━━━━━━━━━━━
+📊 <b>Tu resumen actual:</b>
+✅ Aprobados: ${total} (${activos.length} activos, ${vencidos.length} pasados)
+⏳ Pendientes: ${eventosPendientes.length}
+
+¡Tu evento ha sido aprobado exitosamente! 🎉`;
+
     } else if (tipo === 'rechazado') {
+      const eventosRechazados = await getEventosRechazadosForBot(idAcademico, usuarioCreador.role);
+      
       mensaje = 
-`❌ <b>Evento Rechazado</b>
+`❌ <b>EVENTO RECHAZADO</b>
 
-📅 <b>${evento.nombreevento}</b>
+📅 <b>${evento.nombreevento || eventoCompleto.nombreevento}</b>
 
 🗓️ Fecha: ${fechaEvento}
-📍 Lugar: ${evento.lugarevento}
-👤 Responsable: ${evento.responsable_evento}
+📍 Lugar: ${evento.lugarevento || eventoCompleto.lugarevento}
+👤 Responsable: ${evento.responsable_evento || `${usuarioCreador.nombre} ${usuarioCreador.apellidopat || ''}`.trim()}
+🏫 Facultad: ${facultadNombre}
 
-${evento.razon_rechazo ? `💬 <b>Motivo:</b> ${evento.razon_rechazo}` : ''}
+${evento.razon_rechazo ? `💬 <b>Motivo del rechazo:</b>\n${evento.razon_rechazo}` : ''}
 
-Tu evento ha sido rechazado.`;
+━━━━━━━━━━━━━━━━━━━━
+📊 <b>Total de eventos rechazados: ${eventosRechazados.length}</b>
+
+Revisa los motivos y realiza las correcciones necesarias.`;
+
+    } else if (tipo === 'nuevo') {
+      mensaje = 
+`🆕 <b>NUEVO EVENTO REGISTRADO</b>
+
+📅 <b>${evento.nombreevento || eventoCompleto.nombreevento}</b>
+
+🗓️ Fecha: ${fechaEvento}
+${evento.horaevento || eventoCompleto.horaevento ? `🕐 Hora: ${evento.horaevento || eventoCompleto.horaevento}` : ''}
+📍 Lugar: ${evento.lugarevento || eventoCompleto.lugarevento}
+👤 Responsable: ${evento.responsable_evento || `${usuarioCreador.nombre} ${usuarioCreador.apellidopat || ''}`.trim()}
+🏫 Facultad: ${facultadNombre}
+
+⏳ Estado: Pendiente de aprobación
+
+Tu evento ha sido registrado y está siendo revisado por el administrador.`;
     }
 
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: chatId,
       text: mensaje,
-      parse_mode: 'HTML'  // ← Cambiado a HTML
+      parse_mode: 'HTML'
     });
 
-    console.log(`✅ Notificación Telegram enviada a ${chatId}`);
+    console.log(`✅ Notificación Telegram enviada a ${chatId} (${tipo})`);
   } catch (error) {
     console.error('❌ Error al enviar notificación Telegram:', error.message);
     console.error('❌ Response:', error.response?.data);
